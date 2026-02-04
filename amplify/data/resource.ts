@@ -4,6 +4,8 @@ const schema = a.schema({
   Channel: a
     .model({
       url: a.string(),
+      ebooks: a.hasMany('Ebook', 'channelId'),
+      owner: a.string().authorization(allow => [allow.owner().to(['read'])]),
     }).authorization(allow => [allow.owner()]),
 
   Video: a
@@ -12,6 +14,7 @@ const schema = a.schema({
       url: a.string().required(),
       ebookId: a.id().required(),
       ebook: a.belongsTo('Ebook', 'ebookId'),
+      owner: a.string().authorization(allow => [allow.owner().to(['read'])]),
     }).authorization(allow => [allow.owner()]),
 
   Ebook: a
@@ -23,6 +26,7 @@ const schema = a.schema({
       channelId: a.id().required(),
       channel: a.belongsTo('Channel', 'channelId'),
       sourceVideos: a.hasMany('Video', 'ebookId'),
+      owner: a.string().authorization(allow => [allow.owner().to(['read'])]),
     }).authorization(allow => [allow.owner()]),
 });
 
