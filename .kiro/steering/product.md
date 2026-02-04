@@ -1,18 +1,10 @@
 # Product Overview
 
-This is a Todo application built with AWS Amplify Gen2, React, and TypeScript. The application provides:
+This is a React-based web application built with AWS Amplify that manages channels. The application provides:
 
-- **User Authentication**: Email-based authentication using AWS Amplify Auth
-- **Todo Management**: Create, read, and delete todo items with real-time updates
-- **Cloud Backend**: Serverless backend with GraphQL API and DynamoDB storage
+- **User Authentication**: Email-based authentication with AWS Cognito
+- **Channel Management**: Users can create, view, and delete channels (each channel has a URL)
+- **Real-time Updates**: Uses Amplify's observeQuery for live data synchronization
+- **User Isolation**: Each user can only access their own channels (owner-based authorization)
 
-## Key Features
-
-- Real-time todo synchronization across devices
-- Secure user authentication and authorization
-- Simple, intuitive user interface
-- Cloud-hosted with automatic scaling
-
-## Target Users
-
-Individuals looking for a simple, cloud-synced todo management solution with secure authentication.
+The app follows a simple CRUD pattern with a focus on real-time collaboration and secure user data isolation.
