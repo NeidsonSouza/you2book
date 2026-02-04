@@ -8,6 +8,7 @@ const client = generateClient<Schema>();
 function App() {
   const { user, signOut } = useAuthenticator();
   const [channels, setChannels] = useState<Array<Schema["Channel"]["type"]>>([]);
+  const [newChannelUrl, setNewChannelUrl] = useState("");
 
   useEffect(() => {
     client.models.Channel.observeQuery().subscribe({
@@ -16,7 +17,15 @@ function App() {
   }, []);
 
   function createChannel() {
-    client.models.Channel.create({ url: window.prompt("Channel content") });
+    if (newChannelUrl.trim()) {
+      client.models.Channel.create({ url: newChannelUrl.trim() });
+      setNewChannelUrl("");
+    }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    createChannel();
   }
 
   function handleDeleteClick(id: string) {
@@ -28,7 +37,20 @@ function App() {
   return (
     <main>
       <h1>{user?.signInDetails?.loginId}'s Channels</h1>
-      <button onClick={createChannel}>+ new</button>
+      
+      <form onSubmit={handleSubmit} className="add-channel-form">
+        <input
+          type="text"
+          value={newChannelUrl}
+          onChange={(e) => setNewChannelUrl(e.target.value)}
+          placeholder="Enter channel URL"
+          className="channel-input"
+        />
+        <button type="submit" disabled={!newChannelUrl.trim()}>
+          + Add Channel
+        </button>
+      </form>
+
       <ul>
         {channels.map((channel) => (
           <li key={channel.id} className="channel-item">
