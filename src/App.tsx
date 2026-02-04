@@ -6,7 +6,7 @@ import { useAuthenticator } from '@aws-amplify/ui-react';
 const client = generateClient<Schema>();
 
 function App() {
-  const { signOut } = useAuthenticator();
+  const { user, signOut } = useAuthenticator();
   const [channels, setChannels] = useState<Array<Schema["Channel"]["type"]>>([]);
 
   useEffect(() => {
@@ -27,13 +27,13 @@ function App() {
 
   return (
     <main>
-      <h1>Add YouTube Channel URL</h1>
+      <h1>{user?.signInDetails?.loginId}'s Channels</h1>
       <button onClick={createChannel}>+ new</button>
       <ul>
         {channels.map((channel) => (
           <li key={channel.id} className="channel-item">
             <span className="channel-content">{channel.url}</span>
-            <button 
+            <button
               onClick={() => handleDeleteClick(channel.id)}
               className="delete-button"
             >
