@@ -19,26 +19,29 @@ function App() {
     client.models.Todo.create({ content: window.prompt("Todo content") });
   }
 
-  function deleteTodo(id: string) {
-    client.models.Todo.delete({ id })
+  function handleDeleteClick(id: string) {
+    if (window.confirm("Are you sure you want to delete this todo item?")) {
+      client.models.Todo.delete({ id });
+    }
   }
 
   return (
     <main>
-      <h1>My todos</h1>
+      <h1>Add YouTube Channel URL</h1>
       <button onClick={createTodo}>+ new</button>
       <ul>
         {todos.map((todo) => (
-          <li onClick={() => deleteTodo(todo.id)} key={todo.id}>{todo.content}</li>
+          <li key={todo.id} className="todo-item">
+            <span className="todo-content">{todo.content}</span>
+            <button 
+              onClick={() => handleDeleteClick(todo.id)}
+              className="delete-button"
+            >
+              🗑️
+            </button>
+          </li>
         ))}
       </ul>
-      <div>
-        🥳 App successfully hosted. Try creating a new todo.
-        <br />
-        <a href="https://docs.amplify.aws/react/start/quickstart/#make-frontend-updates">
-          Review next step of this tutorial.
-        </a>
-      </div>
       <button onClick={signOut}>Sign out</button>
     </main>
   );
