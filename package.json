@@ -13,7 +13,8 @@
     "@aws-amplify/ui-react": "~6.13.2",
     "aws-amplify": "~6.16.0",
     "react": "~19.2.4",
-    "react-dom": "~19.2.4"
+    "react-dom": "~19.2.4",
+    "react-router-dom": "^7.13.0"
   },
   "engines": {
     "node": ">= 20.20.0",
@@ -27,6 +28,7 @@
     "@eslint/js": "~9.39.2",
     "@types/react": "~19.2.11",
     "@types/react-dom": "~19.2.3",
+    "@types/react-router-dom": "^5.3.3",
     "@typescript-eslint/eslint-plugin": "~8.54.0",
     "@typescript-eslint/parser": "~8.54.0",
     "@vitejs/plugin-react": "~5.1.3",
