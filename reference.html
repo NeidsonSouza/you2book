@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-gray-50 min-h-screen">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ebooks from YouTube Channels</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="antialiased">
+
+  <!-- Optional simple header -->
+  <header class="bg-white border-b sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <h1 class="text-2xl font-bold text-gray-900">
+        Generated Ebooks
+        <span class="text-lg font-normal text-gray-500 ml-2">(from selected channel)</span>
+      </h1>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    
+    <!-- Grid of ebook cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      
+      <!-- Example single ebook card (repeat this block for each ebook) -->
+      <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden flex flex-col h-full">
+        <!-- Title area -->
+        <div class="p-5 border-b border-gray-100">
+          <h2 class="text-lg font-semibold text-gray-900 line-clamp-2">
+            Introduction to Machine Learning Basics
+          </h2>
+          <p class="text-sm text-gray-500 mt-1">~45 pages • Generated on Feb 3, 2026</p>
+        </div>
+        
+        <!-- Sources (minimal, can be collapsed later if needed) -->
+        <div class="px-5 py-3 bg-gray-50 text-sm text-gray-600 border-b border-gray-100">
+          <p class="font-medium mb-1">From videos:</p>
+          <ul class="list-disc pl-5 space-y-1 text-xs">
+            <li><a href="https://youtube.com/watch?v=abc123" class="text-blue-600 hover:underline">What is Machine Learning? (Andrew Ng)</a></li>
+            <li><a href="https://youtube.com/watch?v=xyz789" class="text-blue-600 hover:underline">ML Basics: Supervised vs Unsupervised</a></li>
+          </ul>
+        </div>
+        
+        <!-- Download CTA – biggest priority -->
+        <div class="p-5 mt-auto">
+          <a href="/downloads/ebook-123.pdf" 
+             class="block w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-md text-center transition">
+            Download PDF
+          </a>
+        </div>
+      </div>
+
+      <!-- Repeat the above card block 5–40 times depending on data -->
+
+    </div>
+
+    <!-- Optional empty / loading state -->
+    <!-- <div class="text-center py-20 text-gray-500">No ebooks yet for this channel…</div> -->
+
+  </main>
+
+</body>
+</html>
