@@ -1,9 +1,9 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 
 const schema = a.schema({
-  Todo: a
+  Channel: a
     .model({
-      content: a.string(),
+      url: a.string(),
     })
     .authorization((allow) => [allow.publicApiKey()]),
 });

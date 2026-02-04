@@ -7,34 +7,34 @@ const client = generateClient<Schema>();
 
 function App() {
   const { signOut } = useAuthenticator();
-  const [todos, setTodos] = useState<Array<Schema["Todo"]["type"]>>([]);
+  const [channels, setChannels] = useState<Array<Schema["Channel"]["type"]>>([]);
 
   useEffect(() => {
-    client.models.Todo.observeQuery().subscribe({
-      next: (data) => setTodos([...data.items]),
+    client.models.Channel.observeQuery().subscribe({
+      next: (data) => setChannels([...data.items]),
     });
   }, []);
 
-  function createTodo() {
-    client.models.Todo.create({ content: window.prompt("Todo content") });
+  function createChannel() {
+    client.models.Channel.create({ url: window.prompt("Channel content") });
   }
 
   function handleDeleteClick(id: string) {
-    if (window.confirm("Are you sure you want to delete this todo item?")) {
-      client.models.Todo.delete({ id });
+    if (window.confirm("Are you sure you want to delete this channel item?")) {
+      client.models.Channel.delete({ id });
     }
   }
 
   return (
     <main>
       <h1>Add YouTube Channel URL</h1>
-      <button onClick={createTodo}>+ new</button>
+      <button onClick={createChannel}>+ new</button>
       <ul>
-        {todos.map((todo) => (
-          <li key={todo.id} className="todo-item">
-            <span className="todo-content">{todo.content}</span>
+        {channels.map((channel) => (
+          <li key={channel.id} className="channel-item">
+            <span className="channel-content">{channel.url}</span>
             <button 
-              onClick={() => handleDeleteClick(todo.id)}
+              onClick={() => handleDeleteClick(channel.id)}
               className="delete-button"
             >
               🗑️
