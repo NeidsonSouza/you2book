@@ -6,14 +6,14 @@ This implementation plan converts the video listing design into discrete coding 
 
 ## Tasks
 
-- [ ] 1. Extend GraphQL schema with Video model
+- [x] 1. Extend GraphQL schema with Video model
   - Add Video model to `amplify/data/resource.ts` with required fields
   - Update Channel model to include hasMany relationship with videos
   - Configure proper indexes and authorization rules
   - _Requirements: 6.1, 6.4, 6.5_
 
 - [ ] 2. Create YouTube API integration Lambda function
-  - [ ] 2.1 Set up Lambda function structure and dependencies
+  - [x] 2.1 Set up Lambda function structure and dependencies
     - Create new Lambda function in Amplify backend configuration
     - Install YouTube Data API v3 client library
     - Configure environment variables for API key

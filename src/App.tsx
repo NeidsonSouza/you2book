@@ -20,8 +20,30 @@ function App() {
 
   function createChannel() {
     if (newChannelUrl.trim()) {
-      client.models.Channel.create({ url: newChannelUrl.trim() });
+      // Extract channel name from URL or use a default
+      const channelName = extractChannelNameFromUrl(newChannelUrl.trim()) || 'New Channel';
+      client.models.Channel.create({ 
+        name: channelName,
+        url: newChannelUrl.trim() 
+      });
       setNewChannelUrl("");
+    }
+  }
+
+  function extractChannelNameFromUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      // Extract channel name from YouTube URL patterns
+      if (urlObj.hostname.includes('youtube.com')) {
+        const pathParts = urlObj.pathname.split('/');
+        const channelIndex = pathParts.findIndex(part => part === 'channel' || part === 'c' || part === 'user');
+        if (channelIndex !== -1 && pathParts[channelIndex + 1]) {
+          return pathParts[channelIndex + 1];
+        }
+      }
+      return urlObj.hostname;
+    } catch {
+      return 'New Channel';
     }
   }
 
@@ -35,9 +57,23 @@ function App() {
     navigate(`/channel/${encodedUrl}`);
   }
 
-  function handleDeleteClick(id: string) {
+  async function handleDeleteClick(id: string) {
     if (window.confirm("Are you sure you want to delete this channel item?")) {
-      client.models.Channel.delete({ id });
+      try {
+        console.log('Attempting to delete channel with ID:', id);
+        const result = await client.models.Channel.delete({ id });
+        console.log('Delete result:', result);
+        
+        if (result.errors) {
+          console.error('Delete errors:', result.errors);
+          alert('Failed to delete channel: ' + result.errors.map(e => e.message).join(', '));
+        } else {
+          console.log('Channel deleted successfully');
+        }
+      } catch (error) {
+        console.error('Delete error:', error);
+        alert('Failed to delete channel: ' + (error as Error).message);
+      }
     }
   }
 
@@ -65,7 +101,8 @@ function App() {
               className={`channel-content ${channel.url ? 'clickable' : ''}`}
               onClick={() => channel.url && handleChannelClick(channel.url)}
             >
-              {channel.url || 'No URL'}
+              <div className="channel-name">{channel.name || 'Unnamed Channel'}</div>
+              <div className="channel-url">{channel.url || 'No URL'}</div>
             </span>
             <button
               onClick={() => handleDeleteClick(channel.id)}
