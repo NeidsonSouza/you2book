@@ -1,42 +1,60 @@
 # Project Structure
 
-## Root Level
-- `package.json` - Frontend dependencies and scripts
-- `vite.config.ts` - Vite configuration
-- `tsconfig.json` - TypeScript configuration
-- `eslint.config.js` - ESLint configuration
-- `amplify_outputs.json` - Generated Amplify configuration
-
-## Frontend (`src/`)
+## Root Layout
 ```
-src/
-├── main.tsx          # App entry point with Amplify config
-├── App.tsx           # Main application component
-├── App.css           # App-specific styles
-├── index.css         # Global styles
-├── vite-env.d.ts     # Vite type definitions
-└── assets/           # Static assets
+/                           # Workspace root
+├── src/                    # Frontend React application
+├── amplify/                # Backend infrastructure code
+├── public/                 # Static assets
+├── .kiro/                  # Kiro configuration and specs
+└── dist/                   # Build output (gitignored)
 ```
 
-## Backend (`amplify/`)
-```
-amplify/
-├── backend.ts        # Backend resource definitions
-├── package.json      # Backend package config
-├── tsconfig.json     # Backend TypeScript config
-├── auth/
-│   └── resource.ts   # Cognito auth configuration
-└── data/
-    └── resource.ts   # GraphQL schema and data models
-```
+## Frontend (`/src`)
+- `main.tsx` - Application entry point with Amplify configuration
+- `App.tsx` - Main channel list view with authentication
+- `ChannelDetail.tsx` - Individual channel detail view
+- `VideoList.tsx` - Video listing component with real-time updates
+- `VideoItem.tsx` - Individual video display component
+- `*.css` - Component and global styles
+- `vite-env.d.ts` - Vite type definitions
 
-## Generated Files
-- `.amplify/` - Build artifacts and CDK output
-- `amplify_outputs.json` - Client configuration (auto-generated)
+## Backend (`/amplify`)
+- `backend.ts` - Amplify backend definition and resource wiring
+- `auth/resource.ts` - Cognito authentication configuration
+- `data/resource.ts` - Data schema with models and mutations
+- `functions/youtube-video-fetcher/` - Lambda function for YouTube API integration
 
-## Conventions
-- Use TypeScript for all source files
-- Backend resources defined in separate modules
-- Schema types exported from `amplify/data/resource.ts`
-- Authentication handled at app root level
-- Real-time data patterns using `observeQuery()`
+## Data Models
+Defined in `amplify/data/resource.ts`:
+- **Channel** - YouTube channels (owner-authorized)
+- **Video** - Channel videos with YouTube metadata (owner-authorized)
+- **Ebook** - Generated ebooks from videos (owner-authorized)
+- **EbookVideo** - Videos included in ebooks (owner-authorized)
+
+## Key Patterns
+
+### Data Access
+- Use `generateClient<Schema>()` from `aws-amplify/data`
+- Real-time updates via `observeQuery()` subscriptions
+- Owner-based authorization on all models
+
+### Component Structure
+- Functional components with hooks
+- TypeScript with strict typing using Schema types
+- Props interfaces defined inline or exported
+
+### State Management
+- Local component state with `useState`
+- Real-time sync via Amplify observeQuery subscriptions
+- No external state management library
+
+### Navigation
+- React Router DOM for client-side routing
+- URL encoding for channel URLs in routes
+- Pattern: `/channel/:encodedUrl`
+
+### Error Handling
+- Try-catch blocks for async operations
+- User-facing error messages in UI
+- Console logging for debugging

@@ -1,41 +1,45 @@
-# Technology Stack
+# Tech Stack
 
 ## Frontend
-- **React 19.2.4** with TypeScript
-- **Vite** as build tool and dev server
-- **AWS Amplify UI React** for authentication components
-- **CSS** for styling (no framework)
+- **Framework**: React 19.2.4 with TypeScript
+- **Build Tool**: Vite 7.3.1
+- **Routing**: React Router DOM 7.13.0
+- **UI Library**: AWS Amplify UI React 6.13.2
+- **Styling**: CSS (App.css, index.css)
 
 ## Backend
-- **AWS Amplify Gen2** backend
-- **AWS Cognito** for authentication
-- **AWS AppSync** for GraphQL API
-- **DynamoDB** for data storage
+- **Platform**: AWS Amplify Gen2 (1.20.0)
+- **Authentication**: Amazon Cognito (email-based)
+- **Database**: DynamoDB (via Amplify Data)
+- **Functions**: AWS Lambda with Node.js
+- **External APIs**: YouTube Data API v3 (googleapis)
 
 ## Development Tools
-- **TypeScript 5.9.3** for type safety
-- **ESLint** for code linting
-- **Node.js >= 20.20.0** and **npm >= 10.8.0** required
+- **Linting**: ESLint 9.39.2 with TypeScript plugin
+- **Type Checking**: TypeScript 5.9.3 (strict mode enabled)
+- **Node Version**: >= 20.20.0
+- **Package Manager**: npm >= 10.8.0
 
 ## Common Commands
 
-### Development
 ```bash
-npm run dev          # Start development server
-npm run build        # Build for production (TypeScript + Vite)
-npm run preview      # Preview production build
-npm run lint         # Run ESLint
+# Development
+npm run dev              # Start Vite dev server
+npx ampx sandbox         # Start Amplify sandbox environment
+
+# Building
+npm run build            # TypeScript compile + Vite build
+tsc                      # Type check only
+
+# Code Quality
+npm run lint             # Run ESLint
+
+# Preview
+npm run preview          # Preview production build
 ```
 
-### Amplify Backend
-```bash
-npx ampx sandbox     # Start local backend sandbox
-npx ampx deploy      # Deploy to AWS
-npx ampx generate    # Generate client code
-```
-
-## Key Patterns
-- Use `generateClient<Schema>()` for type-safe API calls
-- All models use owner-based authorization by default
-- Real-time subscriptions with `observeQuery()`
-- TypeScript strict mode enabled
+## TypeScript Configuration
+- Target: ES2020
+- Module: ESNext with bundler resolution
+- Strict mode enabled with unused locals/parameters checks
+- JSX: react-jsx

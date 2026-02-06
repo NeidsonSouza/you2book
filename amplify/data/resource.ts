@@ -43,6 +43,22 @@ const schema = a.schema({
       channel: a.belongsTo('Channel', 'channelId'),
       sourceVideos: a.hasMany('EbookVideo', 'ebookId'),
     }).authorization(allow => [allow.owner()]),
+
+  fetchChannelVideos: a
+    .mutation()
+    .arguments({
+      channelUrl: a.string().required(),
+      channelId: a.id().required(),
+    })
+    .returns(a.ref('FetchVideosResponse'))
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function('youtubeVideoFetcher')),
+
+  FetchVideosResponse: a.customType({
+    success: a.boolean().required(),
+    message: a.string(),
+    videoCount: a.integer(),
+  }),
 });
 
 export type Schema = ClientSchema<typeof schema>;
