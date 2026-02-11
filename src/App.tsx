@@ -6,6 +6,13 @@ import { useNavigate } from 'react-router-dom';
 
 const client = generateClient<Schema>();
 
+interface VideoMetadata {
+  youtubeId: string;
+  title: string;
+  description: string;
+  duration: string;
+}
+
 function App() {
   const { user, signOut } = useAuthenticator();
   const navigate = useNavigate();
@@ -34,20 +41,19 @@ function App() {
         url: channelUrl 
       }).then(async (result) => {
         if (result.data && result.data.id) {
-          // Automatically fetch videos for the newly created channel
+          // Fetch videos using the custom query
           try {
-            const fetchResult = await client.mutations.fetchChannelVideos({
-              channelUrl: channelUrl,
-              channelId: result.data.id
-            });
+            const videos = await fetchVideosFromYouTube(channelUrl);
             
-            if (fetchResult.data?.success) {
-              console.log('Videos fetched successfully:', fetchResult.data.message);
+            if (videos.length > 0) {
+              // Save videos to DynamoDB using Amplify Data client
+              await saveVideosToDatabase(videos, result.data.id);
+              console.log(`Successfully saved ${videos.length} videos`);
             } else {
-              setFetchError(fetchResult.data?.message || 'Failed to fetch videos');
+              console.log('No videos found for this channel');
             }
           } catch (error) {
-            console.error('Error fetching videos:', error);
+            console.error('Error fetching or saving videos:', error);
             setFetchError('Failed to fetch videos: ' + (error as Error).message);
           }
         }
@@ -58,6 +64,63 @@ function App() {
         setFetchError('Failed to create channel: ' + (error as Error).message);
         setIsCreatingChannel(false);
       });
+    }
+  }
+
+  async function fetchVideosFromYouTube(channelUrl: string): Promise<VideoMetadata[]> {
+      // Call the custom query which invokes the Lambda function
+      const result = await client.queries.sayHello({
+        name: channelUrl,
+      });
+
+      if (result.errors) {
+        throw new Error(result.errors.map(e => e.message).join(', '));
+      }
+
+      if (!result.data) {
+        throw new Error('No data returned from query');
+      }
+
+      // Parse the JSON response
+      const response = JSON.parse(result.data as string) as {
+        success: boolean;
+        message: string;
+        videos: VideoMetadata[];
+      };
+
+      if (!response.success) {
+        throw new Error(response.message);
+      }
+
+      return response.videos;
+    }
+
+  async function saveVideosToDatabase(videos: VideoMetadata[], channelId: string): Promise<void> {
+    // Check for existing videos to avoid duplicates
+    const existingVideos = await client.models.Video.list({
+      filter: { channelId: { eq: channelId } }
+    });
+
+    const existingYoutubeIds = new Set(
+      existingVideos.data.map(v => v.youtubeId)
+    );
+
+    // Save only new videos
+    for (const video of videos) {
+      if (!existingYoutubeIds.has(video.youtubeId)) {
+        try {
+          await client.models.Video.create({
+            youtubeId: video.youtubeId,
+            title: video.title,
+            description: video.description || '',
+            duration: video.duration,
+            channelId: channelId,
+          });
+        } catch (error) {
+          console.error(`Error saving video ${video.youtubeId}:`, error);
+          // Continue with other videos even if one fails
+        }
+      }
     }
   }
 

@@ -1,4 +1,5 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
+import { sayHello } from "../functions/say-hello/resource"
 
 const schema = a.schema({
   Channel: a
@@ -43,23 +44,17 @@ const schema = a.schema({
       channel: a.belongsTo('Channel', 'channelId'),
       sourceVideos: a.hasMany('EbookVideo', 'ebookId'),
     }).authorization(allow => [allow.owner()]),
-
-  fetchChannelVideos: a
-    .mutation()
+    
+  sayHello: a
+    .query()
     .arguments({
-      channelUrl: a.string().required(),
-      channelId: a.id().required(),
+      name: a.string(),
     })
-    .returns(a.ref('FetchVideosResponse'))
-    .authorization(allow => [allow.authenticated()])
-    .handler(a.handler.function('youtubeVideoFetcher')),
+    .returns(a.string())
+    .authorization(allow => [allow.guest()])
+    .handler(a.handler.function(sayHello)),
 
-  FetchVideosResponse: a.customType({
-    success: a.boolean().required(),
-    message: a.string(),
-    videoCount: a.integer(),
-  }),
-});
+})
 
 export type Schema = ClientSchema<typeof schema>;
 
