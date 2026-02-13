@@ -92,7 +92,10 @@ function App() {
         return [];
       }
 
-      return result.data.videos;
+      // Filter out any null or undefined values
+      return result.data.videos.filter((video): video is VideoMetadata => 
+        video !== null && video !== undefined
+      );
     }
 
   async function saveVideosToDatabase(videos: VideoMetadata[], channelId: string): Promise<void> {
