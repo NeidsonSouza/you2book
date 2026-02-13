@@ -24,7 +24,7 @@ function App() {
     });
   }, []);
 
-  function createChannel() {
+  function createChannel(): void {
     if (newChannelUrl.trim()) {
       setIsCreatingChannel(true);
       setFetchError(null);
@@ -66,17 +66,17 @@ function App() {
 
 
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault();
     createChannel();
   }
 
-  function handleChannelClick(url: string) {
+  function handleChannelClick(url: string): void {
     const encodedUrl = encodeURIComponent(url);
     navigate(`/channel/${encodedUrl}`);
   }
 
-  async function handleDeleteClick(id: string) {
+  async function handleDeleteClick(id: string): Promise<void> {
     if (window.confirm("Are you sure you want to delete this channel and all its videos?")) {
       try {
         console.log('Attempting to delete channel with ID:', id);

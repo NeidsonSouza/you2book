@@ -1,6 +1,8 @@
 import { client } from '../lib/amplifyClient';
 
 export async function deleteChannel(channelId: string): Promise<void> {
+  const errors: string[] = [];
+
   // Delete all videos associated with this channel
   const videosResult = await client.models.Video.list({
     filter: { channelId: { eq: channelId } }
@@ -11,14 +13,13 @@ export async function deleteChannel(channelId: string): Promise<void> {
   }
 
   const videos = videosResult.data;
-  console.log(`Found ${videos.length} videos to delete`);
 
   for (const video of videos) {
     const deleteVideoResult = await client.models.Video.delete({ id: video.id });
     if (deleteVideoResult.errors) {
-      console.error('Error deleting video:', video.id, deleteVideoResult.errors);
-    } else {
-      console.log('Deleted video:', video.id);
+      const errorMsg = `Failed to delete video ${video.id}: ${deleteVideoResult.errors.map(e => e.message).join(', ')}`;
+      console.error(errorMsg);
+      errors.push(errorMsg);
     }
   }
 
@@ -32,7 +33,6 @@ export async function deleteChannel(channelId: string): Promise<void> {
   }
 
   const ebooks = ebooksResult.data;
-  console.log(`Found ${ebooks.length} ebooks to delete`);
 
   for (const ebook of ebooks) {
     // Delete all EbookVideos for this ebook
@@ -40,13 +40,17 @@ export async function deleteChannel(channelId: string): Promise<void> {
       filter: { ebookId: { eq: ebook.id } }
     });
 
-    if (!ebookVideosResult.errors) {
+    if (ebookVideosResult.errors) {
+      const errorMsg = `Failed to fetch ebook videos for ebook ${ebook.id}: ${ebookVideosResult.errors.map(e => e.message).join(', ')}`;
+      console.error(errorMsg);
+      errors.push(errorMsg);
+    } else {
       for (const ebookVideo of ebookVideosResult.data) {
         const deleteEbookVideoResult = await client.models.EbookVideo.delete({ id: ebookVideo.id });
         if (deleteEbookVideoResult.errors) {
-          console.error('Error deleting ebook video:', ebookVideo.id, deleteEbookVideoResult.errors);
-        } else {
-          console.log('Deleted ebook video:', ebookVideo.id);
+          const errorMsg = `Failed to delete ebook video ${ebookVideo.id}: ${deleteEbookVideoResult.errors.map(e => e.message).join(', ')}`;
+          console.error(errorMsg);
+          errors.push(errorMsg);
         }
       }
     }
@@ -54,9 +58,9 @@ export async function deleteChannel(channelId: string): Promise<void> {
     // Delete the ebook itself
     const deleteEbookResult = await client.models.Ebook.delete({ id: ebook.id });
     if (deleteEbookResult.errors) {
-      console.error('Error deleting ebook:', ebook.id, deleteEbookResult.errors);
-    } else {
-      console.log('Deleted ebook:', ebook.id);
+      const errorMsg = `Failed to delete ebook ${ebook.id}: ${deleteEbookResult.errors.map(e => e.message).join(', ')}`;
+      console.error(errorMsg);
+      errors.push(errorMsg);
     }
   }
 
@@ -64,8 +68,12 @@ export async function deleteChannel(channelId: string): Promise<void> {
   const result = await client.models.Channel.delete({ id: channelId });
 
   if (result.errors) {
-    throw new Error('Failed to delete channel: ' + result.errors.map(e => e.message).join(', '));
+    const errorMsg = 'Failed to delete channel: ' + result.errors.map(e => e.message).join(', ');
+    errors.push(errorMsg);
   }
 
-  console.log('Channel and all related data deleted successfully');
+  // Report all collected errors
+  if (errors.length > 0) {
+    throw new Error(`Channel deletion completed with ${errors.length} error(s):\n${errors.join('\n')}`);
+  }
 }

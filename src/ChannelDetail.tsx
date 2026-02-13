@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../amplify/data/resource';
-import { formatDate as _formatDate } from './lib/utils';
+import { formatDate } from './lib/utils';
 
 const client = generateClient<Schema>();
 
@@ -163,7 +163,7 @@ function ChannelDetail() {
                     <span className="font-medium">Pages:</span> {ebook.pageCount}
                   </p>
                   <p className="text-sm text-gray-600">
-                    <span className="font-medium">Generated:</span> {_formatDate(ebook.generatedDate)}
+                    <span className="font-medium">Generated:</span> {formatDate(ebook.generatedDate)}
                   </p>
                 </div>
                 

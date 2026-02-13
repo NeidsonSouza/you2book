@@ -25,19 +25,22 @@ export async function fetchVideosFromYouTube(channelUrl: string): Promise<VideoM
   }
 
   if (!result.data.videos || !Array.isArray(result.data.videos)) {
-    console.warn('No videos array in response, returning empty array');
     return [];
   }
 
-  return result.data.videos.filter((video): video is VideoMetadata => 
-    video !== null && video !== undefined
-  );
+  return result.data.videos;
 }
 
 export async function saveVideosToDatabase(videos: VideoMetadata[], channelId: string): Promise<void> {
+  const errors: string[] = [];
+
   const existingVideos = await client.models.Video.list({
     filter: { channelId: { eq: channelId } }
   });
+
+  if (existingVideos.errors) {
+    throw new Error('Failed to fetch existing videos: ' + existingVideos.errors.map(e => e.message).join(', '));
+  }
 
   const existingYoutubeIds = new Set(
     existingVideos.data.map(v => v.youtubeId)
@@ -45,33 +48,35 @@ export async function saveVideosToDatabase(videos: VideoMetadata[], channelId: s
 
   for (const video of videos) {
     if (!existingYoutubeIds.has(video.youtubeId)) {
-      try {
-        await client.models.Video.create({
-          youtubeId: video.youtubeId,
-          title: video.title,
-          description: video.description || '',
-          duration: video.duration,
-          channelId: channelId,
-        });
-      } catch (error) {
-        console.error(`Error saving video ${video.youtubeId}:`, error);
+      const result = await client.models.Video.create({
+        youtubeId: video.youtubeId,
+        title: video.title,
+        description: video.description || '',
+        duration: video.duration,
+        channelId: channelId,
+      });
+
+      if (result.errors) {
+        const errorMsg = `Failed to save video ${video.youtubeId}: ${result.errors.map(e => e.message).join(', ')}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
       }
     }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Video save completed with ${errors.length} error(s):\n${errors.join('\n')}`);
   }
 }
 
 export function extractChannelNameFromUrl(url: string): string {
-  try {
-    const urlObj = new URL(url);
-    if (urlObj.hostname.includes('youtube.com')) {
-      const pathParts = urlObj.pathname.split('/');
-      const channelIndex = pathParts.findIndex(part => part === 'channel' || part === 'c' || part === 'user');
-      if (channelIndex !== -1 && pathParts[channelIndex + 1]) {
-        return pathParts[channelIndex + 1];
-      }
+  const urlObj = new URL(url);
+  if (urlObj.hostname.includes('youtube.com')) {
+    const pathParts = urlObj.pathname.split('/');
+    const channelIndex = pathParts.findIndex(part => part === 'channel' || part === 'c' || part === 'user');
+    if (channelIndex !== -1 && pathParts[channelIndex + 1]) {
+      return pathParts[channelIndex + 1];
     }
-    return urlObj.hostname;
-  } catch {
-    return 'New Channel';
   }
+  return urlObj.hostname;
 }

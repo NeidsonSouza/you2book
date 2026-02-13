@@ -97,7 +97,7 @@ def create_agent_client() -> Agent:
     return agent
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Lambda handler for suggesting book groups based on video content.
     
