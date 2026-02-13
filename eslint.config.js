@@ -1,21 +1,9 @@
-import {
-    defineConfig,
-    globalIgnores
-} from "eslint/config";
-
 import globals from "globals";
-
-import {
-    fixupConfigRules,
-} from "@eslint/compat";
-
 import tsParser from "@typescript-eslint/parser";
 import reactRefresh from "eslint-plugin-react-refresh";
 import js from "@eslint/js";
-
-import {
-    FlatCompat,
-} from "@eslint/eslintrc";
+import { FlatCompat } from "@eslint/eslintrc";
+import { fixupConfigRules } from "@eslint/compat";
 
 const compat = new FlatCompat({
     baseDirectory: import.meta.dirname,
@@ -23,28 +11,30 @@ const compat = new FlatCompat({
     allConfig: js.configs.all
 });
 
-export default defineConfig([{
-    languageOptions: {
-        globals: {
-            ...globals.browser,
-        },
-
-        parser: tsParser,
+export default [
+    {
+        ignores: ["**/dist/**", "**/node_modules/**", "**/.amplify/**"]
     },
-
-    extends: fixupConfigRules(compat.extends(
+    ...fixupConfigRules(compat.extends(
         "eslint:recommended",
         "plugin:@typescript-eslint/recommended",
         "plugin:react-hooks/recommended",
     )),
-
-    plugins: {
-        "react-refresh": reactRefresh,
-    },
-
-    rules: {
-        "react-refresh/only-export-components": ["warn", {
-            allowConstantExport: true,
-        }],
-    },
-}, globalIgnores(["**/dist"])]);
+    {
+        files: ["**/*.{ts,tsx}"],
+        languageOptions: {
+            globals: {
+                ...globals.browser,
+            },
+            parser: tsParser,
+        },
+        plugins: {
+            "react-refresh": reactRefresh,
+        },
+        rules: {
+            "react-refresh/only-export-components": ["warn", {
+                allowConstantExport: true,
+            }],
+        },
+    }
+];
