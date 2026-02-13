@@ -7,20 +7,20 @@
 - [ ] 1.4 Deploy schema changes and verify in sandbox
 
 ## 2. Lambda Function Setup
-- [ ] 2.1 Create amplify/functions/suggest-book-groups directory structure
-- [ ] 2.2 Create package.json with Strands Agents dependencies
-- [ ] 2.3 Create resource.ts for Lambda configuration
-- [ ] 2.4 Create handler.ts with basic structure and exports
+- [x] 2.1 Create amplify/functions/suggest-book-groups directory structure
+- [x] 2.2 Create requirements.txt with Strands Agents dependencies
+- [x] 2.3 Create resource.ts for Lambda configuration (Python 3.12 runtime)
+- [x] 2.4 Create handler.py with basic structure and handler function
 
 ## 3. Lambda Function - Core Logic
 - [ ] 3.1 Implement video fetching from DynamoDB
-  - Query videos by channelId
-  - Validate minimum 3 videos
+  - Query videos by channelId using boto3
+  - Validate at least 1 video exists
   - Handle errors
 - [ ] 3.2 Implement summary generation (Stage 1)
   - Create Strands Agent client
   - Generate summary for each video using xAI
-  - Store summaries in memory map
+  - Store summaries in dictionary (videoId -> summary)
   - Handle API errors and retries
 - [ ] 3.3 Implement video clustering (Stage 2)
   - Prepare clustering input from summaries
@@ -28,7 +28,7 @@
   - Parse JSON response
   - Validate clustering results
 - [ ] 3.4 Implement BookGroup persistence
-  - Delete existing groups for channel
+  - Delete existing groups for channel using boto3
   - Create new BookGroup records
   - Handle DynamoDB errors
 
@@ -57,16 +57,16 @@
 - [ ] 7.4 Test UI flow end-to-end
 
 ## 8. Testing
-- [ ] 8.1 Write unit test for video fetching logic
-- [ ] 8.2 Write unit test for clustering result parsing
-- [ ] 8.3 Write integration test for complete flow
+- [ ] 8.1 Write unit test for video fetching logic (pytest)
+- [ ] 8.2 Write unit test for clustering result parsing (pytest)
+- [ ] 8.3 Write integration test for complete flow (pytest)
 - [ ] 8.4 Manual testing with real channel data
 
 ## 9. Error Handling and Polish
 - [ ] 9.1 Add comprehensive error handling in Lambda
 - [ ] 9.2 Add user-friendly error messages in UI
 - [ ] 9.3 Add timeout handling (5-minute limit)
-- [ ] 9.4 Test edge cases (3 videos, 50+ videos, API failures)
+- [ ] 9.4 Test edge cases (1 video, 50+ videos, API failures)
 
 ## 10. Documentation and Deployment
 - [ ] 10.1 Update README with new feature documentation

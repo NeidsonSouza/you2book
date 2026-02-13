@@ -40,23 +40,25 @@ bookGroups: a.hasMany('BookGroup', 'channelId')
 
 **Location**: `amplify/functions/suggest-book-groups/`
 
+**Runtime**: Python 3.12
+
 **Input**:
-```typescript
+```python
 {
-  channelId: string
+  "channelId": str
 }
 ```
 
 **Output**:
-```typescript
+```python
 {
-  success: boolean,
-  groups: Array<{
-    title: string,
-    themeDescription: string,
-    videoIds: string[]
-  }>,
-  error?: string
+  "success": bool,
+  "groups": List[{
+    "title": str,
+    "themeDescription": str,
+    "videoIds": List[str]
+  }],
+  "error": Optional[str]
 }
 ```
 
@@ -64,7 +66,7 @@ bookGroups: a.hasMany('BookGroup', 'channelId')
 
 1. **Fetch Videos**
    - Query DynamoDB for all videos with matching channelId
-   - Validate minimum 3 videos exist
+   - Validate at least 1 video exists
 
 2. **Generate Summaries** (Stage 1)
    - For each video, create input: `{ title, description, duration }`
@@ -120,7 +122,7 @@ Return JSON format:
 }
 
 Guidelines:
-- Minimum 2 videos per group
+- Minimum 1 video per group
 - Groups should be logical and cohesive
 - Prioritize educational/tutorial series
 - Consider video sequence and progression
@@ -129,30 +131,30 @@ Guidelines:
 ### Strands Agents Integration
 
 **Setup**:
-```typescript
-import { Agent } from '@strands/agents';
+```python
+from strands import Agent
 
-const agent = new Agent({
-  model: 'xai/grok-2', // or appropriate xAI model
-  // configuration from environment variables
-});
+agent = Agent(
+    model='xai/grok-2',  # or appropriate xAI model
+    # configuration from environment variables
+)
 ```
 
 **Summary Generation**:
-```typescript
-const summary = await agent.run({
-  prompt: summaryPrompt,
-  maxTokens: 200
-});
+```python
+summary = agent.run(
+    prompt=summary_prompt,
+    max_tokens=200
+)
 ```
 
 **Clustering**:
-```typescript
-const clusteringResult = await agent.run({
-  prompt: clusteringPrompt,
-  maxTokens: 2000,
-  responseFormat: 'json'
-});
+```python
+clustering_result = agent.run(
+    prompt=clustering_prompt,
+    max_tokens=2000,
+    response_format='json'
+)
 ```
 
 ## Frontend Design
@@ -163,7 +165,7 @@ const clusteringResult = await agent.run({
 ```tsx
 <button 
   onClick={handleSuggestGroups}
-  disabled={videos.length < 3 || isLoading}
+  disabled={videos.length < 1 || isLoading}
 >
   {isLoading ? 'Analyzing...' : 'Suggest Book Groups'}
 </button>
@@ -240,7 +242,6 @@ export function BookGroupsList({ groups, videos }: BookGroupsListProps) {
 
 ### Backend Errors
 - **No videos found**: Return error message
-- **Insufficient videos**: Return error if < 3 videos
 - **AI service timeout**: 5-minute timeout, return partial results or error
 - **AI service failure**: Catch and return user-friendly error
 - **DynamoDB errors**: Log and return generic error
@@ -287,15 +288,68 @@ export function BookGroupsList({ groups, videos }: BookGroupsListProps) {
 1. Test with real YouTube channel data
 2. Verify AI groupings make sense
 3. Test loading states and error messages
+4. Test with single video channels
 
 ## Deployment
 
-1. Add Strands Agents dependencies to Lambda function
+1. Add Strands Agents dependencies to Lambda function (requirements.txt)
 2. Configure xAI API credentials in environment variables
 3. Deploy schema changes (BookGroup model)
-4. Deploy Lambda function
+4. Deploy Lambda function (Python 3.12 runtime)
 5. Deploy frontend changes
 6. Test in sandbox environment before production
+
+## Python Lambda Structure
+
+```
+amplify/functions/suggest-book-groups/
+├── handler.py          # Main Lambda handler
+├── requirements.txt    # Python dependencies
+└── resource.ts         # Lambda configuration
+```
+
+**requirements.txt**:
+```
+strands-agents>=0.1.0
+boto3>=1.34.0
+```
+
+**handler.py structure**:
+```python
+import json
+import os
+from typing import Dict, List, Any
+from strands import Agent
+import boto3
+
+def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    Lambda handler for suggesting book groups
+    
+    Args:
+        event: Contains channelId in arguments
+        context: Lambda context
+        
+    Returns:
+        Response with success, groups, and optional error
+    """
+    try:
+        channel_id = event['arguments']['channelId']
+        
+        # Implementation here
+        
+        return {
+            'success': True,
+            'groups': [],
+            'error': None
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'groups': [],
+            'error': str(e)
+        }
+```
 
 ## Future Enhancements (Post-MVP)
 - Edit/reassign videos between groups

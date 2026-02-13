@@ -18,7 +18,7 @@ As a user, I want to see which videos are included in each suggested group, so t
 
 ### 1.1 Button Availability
 - A "Suggest Book Groups" button is visible on the channel detail page
-- Button is only enabled when the channel has at least 3 videos
+- Button is only enabled when the channel has at least 1 video
 - Button shows loading state while processing
 
 ### 1.2 AI Processing
