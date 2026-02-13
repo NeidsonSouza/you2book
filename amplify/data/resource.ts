@@ -44,6 +44,20 @@ const schema = a.schema({
       channel: a.belongsTo('Channel', 'channelId'),
       sourceVideos: a.hasMany('EbookVideo', 'ebookId'),
     }).authorization(allow => [allow.owner()]),
+
+  BookGroup: a
+    .model({
+      channelId: a.id().required(),
+      channel: a.belongsTo('Channel', 'channelId'),
+      title: a.string().required(),
+      themeDescription: a.string(),
+      videoIds: a.string().array().required(),
+      createdAt: a.datetime().required(),
+    })
+    .authorization(allow => [allow.owner()])
+    .secondaryIndexes(index => [
+      index('channelId').name('byChannel')
+    ]),
     
   VideoMetadata: a.customType({
     youtubeId: a.string().required(),
