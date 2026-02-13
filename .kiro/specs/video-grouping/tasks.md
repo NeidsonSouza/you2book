@@ -2,7 +2,7 @@
 
 ## 1. Data Model Setup
 - [x] 1.1 Add BookGroup model to amplify/data/resource.ts
-- [ ] 1.2 Add bookGroups relationship to Channel model
+- [x] 1.2 Add bookGroups relationship to Channel model
 - [ ] 1.3 Add custom types for suggestBookGroups query response
 - [ ] 1.4 Deploy schema changes and verify in sandbox
 

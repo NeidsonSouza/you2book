@@ -8,6 +8,7 @@ const schema = a.schema({
       url: a.string().required(),
       ebooks: a.hasMany('Ebook', 'channelId'),
       videos: a.hasMany('Video', 'channelId'),
+      bookGroups: a.hasMany('BookGroup', 'channelId'),
     }).authorization(allow => [allow.owner()]),
 
   Video: a
