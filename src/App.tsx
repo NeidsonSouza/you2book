@@ -81,18 +81,18 @@ function App() {
         throw new Error('No data returned from query');
       }
 
-      // Parse the JSON response
-      const response = JSON.parse(result.data as string) as {
-        success: boolean;
-        message: string;
-        videos: VideoMetadata[];
-      };
-
-      if (!response.success) {
-        throw new Error(response.message);
+      // result.data is already a typed object with { message, timestamp, success, videos }
+      if (!result.data.success) {
+        throw new Error(result.data.message);
       }
 
-      return response.videos;
+      // Safety check: ensure videos array exists
+      if (!result.data.videos || !Array.isArray(result.data.videos)) {
+        console.warn('No videos array in response, returning empty array');
+        return [];
+      }
+
+      return result.data.videos;
     }
 
   async function saveVideosToDatabase(videos: VideoMetadata[], channelId: string): Promise<void> {

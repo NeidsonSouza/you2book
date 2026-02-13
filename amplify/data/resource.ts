@@ -45,13 +45,27 @@ const schema = a.schema({
       sourceVideos: a.hasMany('EbookVideo', 'ebookId'),
     }).authorization(allow => [allow.owner()]),
     
+  VideoMetadata: a.customType({
+    youtubeId: a.string().required(),
+    title: a.string().required(),
+    description: a.string().required(),
+    duration: a.string().required(),
+  }),
+
+  SayHelloResponse: a.customType({
+    message: a.string().required(),
+    timestamp: a.string().required(),
+    success: a.boolean().required(),
+    videos: a.ref('VideoMetadata').array().required(),
+  }),
+    
   sayHello: a
     .query()
     .arguments({
       name: a.string(),
     })
-    .returns(a.string())
-    .authorization(allow => [allow.guest()])
+    .returns(a.ref('SayHelloResponse'))
+    .authorization(allow => [allow.authenticated()])
     .handler(a.handler.function(sayHello)),
 
 })
