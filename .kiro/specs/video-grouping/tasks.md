@@ -13,15 +13,15 @@
 - [x] 2.4 Create handler.py with basic structure and handler function
 
 ## 3. Lambda Function - Core Logic
-- [ ] 3.1 Implement video fetching from DynamoDB
+- [x] 3.1 Implement video fetching from DynamoDB
   - Query videos by channelId using boto3
   - Validate at least 1 video exists
   - Handle errors
 - [ ] 3.2 Implement summary generation (Stage 1)
-  - Create Strands Agent client
-  - Generate summary for each video using xAI
-  - Store summaries in dictionary (videoId -> summary)
-  - Handle API errors and retries
+  - [x] 3.2.1 Create Strands Agent client
+  - [ ] 3.2.2 Generate summary for each video using xAI
+  - [ ] 3.2.3 Store summaries in dictionary (videoId -> summary)
+  - [ ] 3.2.4 Handle API errors and retries
 - [ ] 3.3 Implement video clustering (Stage 2)
   - Prepare clustering input from summaries
   - Call xAI with clustering prompt
