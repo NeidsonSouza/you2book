@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Schema } from "../amplify/data/resource";
-import { generateClient } from "aws-amplify/data";
 import VideoItem from "./VideoItem";
-
-const client = generateClient<Schema>();
+import { client } from './lib/amplifyClient';
 
 interface VideoListProps {
   channelId: string;

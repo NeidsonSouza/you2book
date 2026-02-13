@@ -1,17 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Schema } from "../amplify/data/resource";
-import { generateClient } from "aws-amplify/data";
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { useNavigate } from 'react-router-dom';
-
-const client = generateClient<Schema>();
-
-interface VideoMetadata {
-  youtubeId: string;
-  title: string;
-  description: string;
-  duration: string;
-}
+import { 
+  fetchVideosFromYouTube, 
+  saveVideosToDatabase, 
+  extractChannelNameFromUrl 
+} from './services/youtubeService';
+import { deleteChannel } from './services/channelService';
+import { client } from './lib/amplifyClient';
 
 function App() {
   const { user, signOut } = useAuthenticator();
@@ -67,84 +64,9 @@ function App() {
     }
   }
 
-  async function fetchVideosFromYouTube(channelUrl: string): Promise<VideoMetadata[]> {
-      // Call the custom query which invokes the Lambda function
-      const result = await client.queries.sayHello({
-        name: channelUrl,
-      });
 
-      if (result.errors) {
-        throw new Error(result.errors.map(e => e.message).join(', '));
-      }
 
-      if (!result.data) {
-        throw new Error('No data returned from query');
-      }
-
-      // result.data is already a typed object with { message, timestamp, success, videos }
-      if (!result.data.success) {
-        throw new Error(result.data.message);
-      }
-
-      // Safety check: ensure videos array exists
-      if (!result.data.videos || !Array.isArray(result.data.videos)) {
-        console.warn('No videos array in response, returning empty array');
-        return [];
-      }
-
-      // Filter out any null or undefined values
-      return result.data.videos.filter((video): video is VideoMetadata => 
-        video !== null && video !== undefined
-      );
-    }
-
-  async function saveVideosToDatabase(videos: VideoMetadata[], channelId: string): Promise<void> {
-    // Check for existing videos to avoid duplicates
-    const existingVideos = await client.models.Video.list({
-      filter: { channelId: { eq: channelId } }
-    });
-
-    const existingYoutubeIds = new Set(
-      existingVideos.data.map(v => v.youtubeId)
-    );
-
-    // Save only new videos
-    for (const video of videos) {
-      if (!existingYoutubeIds.has(video.youtubeId)) {
-        try {
-          await client.models.Video.create({
-            youtubeId: video.youtubeId,
-            title: video.title,
-            description: video.description || '',
-            duration: video.duration,
-            channelId: channelId,
-          });
-        } catch (error) {
-          console.error(`Error saving video ${video.youtubeId}:`, error);
-          // Continue with other videos even if one fails
-        }
-      }
-    }
-  }
-
-  function extractChannelNameFromUrl(url: string): string {
-    try {
-      const urlObj = new URL(url);
-      // Extract channel name from YouTube URL patterns
-      if (urlObj.hostname.includes('youtube.com')) {
-        const pathParts = urlObj.pathname.split('/');
-        const channelIndex = pathParts.findIndex(part => part === 'channel' || part === 'c' || part === 'user');
-        if (channelIndex !== -1 && pathParts[channelIndex + 1]) {
-          return pathParts[channelIndex + 1];
-        }
-      }
-      return urlObj.hostname;
-    } catch {
-      return 'New Channel';
-    }
-  }
-
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     createChannel();
   }
@@ -158,85 +80,10 @@ function App() {
     if (window.confirm("Are you sure you want to delete this channel and all its videos?")) {
       try {
         console.log('Attempting to delete channel with ID:', id);
-        
-        // First, fetch all videos associated with this channel
-        const videosResult = await client.models.Video.list({
-          filter: { channelId: { eq: id } }
-        });
-        
-        if (videosResult.errors) {
-          console.error('Error fetching videos:', videosResult.errors);
-          alert('Failed to fetch videos for deletion: ' + videosResult.errors.map(e => e.message).join(', '));
-          return;
-        }
-        
-        // Delete all associated videos
-        const videos = videosResult.data;
-        console.log(`Found ${videos.length} videos to delete`);
-        
-        for (const video of videos) {
-          const deleteVideoResult = await client.models.Video.delete({ id: video.id });
-          if (deleteVideoResult.errors) {
-            console.error('Error deleting video:', video.id, deleteVideoResult.errors);
-          } else {
-            console.log('Deleted video:', video.id);
-          }
-        }
-        
-        // Fetch all ebooks associated with this channel
-        const ebooksResult = await client.models.Ebook.list({
-          filter: { channelId: { eq: id } }
-        });
-        
-        if (ebooksResult.errors) {
-          console.error('Error fetching ebooks:', ebooksResult.errors);
-          alert('Failed to fetch ebooks for deletion: ' + ebooksResult.errors.map(e => e.message).join(', '));
-          return;
-        }
-        
-        // Delete all associated ebooks and their EbookVideos
-        const ebooks = ebooksResult.data;
-        console.log(`Found ${ebooks.length} ebooks to delete`);
-        
-        for (const ebook of ebooks) {
-          // First delete all EbookVideos for this ebook
-          const ebookVideosResult = await client.models.EbookVideo.list({
-            filter: { ebookId: { eq: ebook.id } }
-          });
-          
-          if (!ebookVideosResult.errors) {
-            for (const ebookVideo of ebookVideosResult.data) {
-              const deleteEbookVideoResult = await client.models.EbookVideo.delete({ id: ebookVideo.id });
-              if (deleteEbookVideoResult.errors) {
-                console.error('Error deleting ebook video:', ebookVideo.id, deleteEbookVideoResult.errors);
-              } else {
-                console.log('Deleted ebook video:', ebookVideo.id);
-              }
-            }
-          }
-          
-          // Then delete the ebook itself
-          const deleteEbookResult = await client.models.Ebook.delete({ id: ebook.id });
-          if (deleteEbookResult.errors) {
-            console.error('Error deleting ebook:', ebook.id, deleteEbookResult.errors);
-          } else {
-            console.log('Deleted ebook:', ebook.id);
-          }
-        }
-        
-        // Now delete the channel
-        const result = await client.models.Channel.delete({ id });
-        console.log('Delete result:', result);
-        
-        if (result.errors) {
-          console.error('Delete errors:', result.errors);
-          alert('Failed to delete channel: ' + result.errors.map(e => e.message).join(', '));
-        } else {
-          console.log('Channel and all related data deleted successfully');
-        }
+        await deleteChannel(id);
       } catch (error) {
         console.error('Delete error:', error);
-        alert('Failed to delete channel: ' + (error as Error).message);
+        alert((error as Error).message);
       }
     }
   }
@@ -260,14 +107,7 @@ function App() {
       </form>
 
       {fetchError && (
-        <div className="error-message" style={{ 
-          padding: '12px', 
-          marginBottom: '16px', 
-          backgroundColor: '#fee', 
-          border: '1px solid #fcc',
-          borderRadius: '4px',
-          color: '#c33'
-        }}>
+        <div className="error-message">
           {fetchError}
         </div>
       )}
