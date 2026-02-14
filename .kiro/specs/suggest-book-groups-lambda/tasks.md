@@ -7,7 +7,7 @@ This plan implements the suggest-book-groups Lambda function that analyzes YouTu
 ## Tasks
 
 - [ ] 1. Update data schema and dependencies
-  - [ ] 1.1 Add 'summary' field to Video model in amplify/data/resource.ts
+  - [x] 1.1 Add 'summary' field to Video model in amplify/data/resource.ts
     - Add `summary: a.string()` to the Video model definition
     - Deploy schema changes
     - _Requirements: 1.1_

@@ -17,6 +17,7 @@ const schema = a.schema({
       title: a.string().required(),
       description: a.string(),
       duration: a.string(),
+      summary: a.string(),
       channelId: a.id().required(),
       channel: a.belongsTo('Channel', 'channelId'),
     })
