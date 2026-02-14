@@ -1,13 +1,32 @@
-import { defineFunction } from '@aws-amplify/backend';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import { Duration } from 'aws-cdk-lib';
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineFunction } from "@aws-amplify/backend";
+import { Duration } from "aws-cdk-lib";
+import { Code, Function, Runtime } from "aws-cdk-lib/aws-lambda";
 
-export const suggestBookGroups = defineFunction((scope) => {
-  return new lambda.Function(scope, 'SuggestBookGroupsFunction', {
-    runtime: lambda.Runtime.PYTHON_3_12,
-    handler: 'handler.lambda_handler',
-    code: lambda.Code.fromAsset('./amplify/functions/suggest-book-groups'),
-    timeout: Duration.seconds(300),
-    memorySize: 512,
-  });
-});
+const functionDir = path.dirname(fileURLToPath(import.meta.url));
+
+export const suggestBookGroupsFunctionHandler = defineFunction(
+  (scope) =>
+    new Function(scope, "suggest-book-groups", {
+      handler: "index.handler",
+      runtime: Runtime.PYTHON_3_14,
+      timeout: Duration.seconds(20),
+      code: Code.fromAsset(functionDir, {
+        bundling: {
+          image: Runtime.PYTHON_3_14.bundlingImage,
+          command: [
+            "bash",
+            "-c",
+            [
+              "pip install -r requirements.txt -t /asset-output",
+              "cp -r . /asset-output"
+            ].join(" && ")
+          ],
+        },
+      }),
+    }),
+    {
+      resourceGroupName: "auth"
+    }
+);
