@@ -74,18 +74,6 @@ const schema = a.schema({
     success: a.boolean().required(),
     videos: a.ref('VideoMetadata').array().required(),
   }),
-
-  BookGroupSuggestion: a.customType({
-    title: a.string().required(),
-    themeDescription: a.string().required(),
-    videoIds: a.string().array().required(),
-  }),
-
-  SuggestBookGroupsResponse: a.customType({
-    success: a.boolean().required(),
-    groups: a.ref('BookGroupSuggestion').array().required(),
-    error: a.string(),
-  }),
     
   sayHello: a
     .query()
