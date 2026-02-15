@@ -1,5 +1,5 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
-import { sayHello } from "../functions/say-hello/resource"
+import { sayHello } from "../functions/fetch-channel-videos/resource"
 
 const schema = a.schema({
   Channel: a

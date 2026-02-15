@@ -6,16 +6,16 @@ This implementation plan refactors the "say-hello" Lambda function into "fetch-c
 
 ## Tasks
 
-- [ ] 1. Rename Lambda function and update references
-  - [ ] 1.1 Rename function directory from `amplify/functions/say-hello` to `amplify/functions/fetch-channel-videos`
+- [x] 1. Rename Lambda function and update references
+  - [x] 1.1 Rename function directory from `amplify/functions/say-hello` to `amplify/functions/fetch-channel-videos`
     - Move all files (handler.ts, resource.ts, package.json)
     - _Requirements: 1.1, 1.2_
   
-  - [ ] 1.2 Update function resource definition
+  - [x] 1.2 Update function resource definition
     - Update `amplify/functions/fetch-channel-videos/resource.ts` to export `fetchChannelVideos` with name 'fetch-channel-videos'
     - _Requirements: 1.3_
   
-  - [ ] 1.3 Update backend configuration imports
+  - [x] 1.3 Update backend configuration imports
     - Update `amplify/backend.ts` to import and register `fetchChannelVideos` instead of `sayHello`
     - _Requirements: 1.4_
 
