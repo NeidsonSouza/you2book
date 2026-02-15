@@ -35,13 +35,13 @@ This implementation plan refactors the "say-hello" Lambda function into "fetch-c
     - Remove `SayHelloResponse` custom type (if not already renamed)
     - _Requirements: 2.4, 2.5_
 
-- [ ] 3. Set up Lambda function dependencies and configuration
-  - [ ] 3.1 Create package.json for Lambda function
+- [x] 3. Set up Lambda function dependencies and configuration
+  - [x] 3.1 Create package.json for Lambda function
     - Add dependencies: @aws-sdk/client-secrets-manager, axios
     - Add devDependencies: @types/node, aws-sdk-client-mock
     - _Requirements: 9.3, 9.4_
   
-  - [ ] 3.2 Update Lambda resource configuration
+  - [x] 3.2 Update Lambda resource configuration
     - Set timeout to 300 seconds
     - Set memory to 512 MB
     - Add environment variable for secret name
