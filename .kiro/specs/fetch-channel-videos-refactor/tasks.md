@@ -19,18 +19,18 @@ This implementation plan refactors the "say-hello" Lambda function into "fetch-c
     - Update `amplify/backend.ts` to import and register `fetchChannelVideos` instead of `sayHello`
     - _Requirements: 1.4_
 
-- [ ] 2. Update Amplify Data schema
-  - [ ] 2.1 Add youtubeChannelId field to Channel model
+- [x] 2. Update Amplify Data schema
+  - [x] 2.1 Add youtubeChannelId field to Channel model
     - Add `youtubeChannelId: a.string()` to Channel model definition
     - _Requirements: 3.1_
   
-  - [ ] 2.2 Create new custom type and query definition
+  - [x] 2.2 Create new custom type and query definition
     - Rename `SayHelloResponse` to `FetchChannelVideosResponse`
     - Create `fetchChannelVideos` query with `channelUrl` argument
     - Update query to use new function handler
     - _Requirements: 2.1, 2.2, 2.3_
   
-  - [ ] 2.3 Remove old schema definitions
+  - [x] 2.3 Remove old schema definitions
     - Remove `sayHello` query definition
     - Remove `SayHelloResponse` custom type (if not already renamed)
     - _Requirements: 2.4, 2.5_

@@ -1,11 +1,12 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
-import { sayHello } from "../functions/fetch-channel-videos/resource"
+import { fetchChannelVideos } from "../functions/fetch-channel-videos/resource"
 
 const schema = a.schema({
   Channel: a
     .model({
       name: a.string(), // Remove .required() to allow null values
       url: a.string().required(),
+      youtubeChannelId: a.string(),
       ebooks: a.hasMany('Ebook', 'channelId'),
       videos: a.hasMany('Video', 'channelId'),
       bookGroups: a.hasMany('BookGroup', 'channelId'),
@@ -68,21 +69,21 @@ const schema = a.schema({
     duration: a.string().required(),
   }),
 
-  SayHelloResponse: a.customType({
+  FetchChannelVideosResponse: a.customType({
     message: a.string().required(),
     timestamp: a.string().required(),
     success: a.boolean().required(),
     videos: a.ref('VideoMetadata').array().required(),
   }),
     
-  sayHello: a
+  fetchChannelVideos: a
     .query()
     .arguments({
-      name: a.string(),
+      channelUrl: a.string().required(),
     })
-    .returns(a.ref('SayHelloResponse'))
+    .returns(a.ref('FetchChannelVideosResponse'))
     .authorization(allow => [allow.authenticated()])
-    .handler(a.handler.function(sayHello)),
+    .handler(a.handler.function(fetchChannelVideos)),
 
 })
 
