@@ -47,56 +47,56 @@ This implementation plan refactors the "say-hello" Lambda function into "fetch-c
     - Add environment variable for secret name
     - _Requirements: 9.5_
 
-- [ ] 4. Implement core Lambda handler utilities
-  - [ ] 4.1 Implement Secrets Manager integration
+- [x] 4. Implement core Lambda handler utilities
+  - [x] 4.1 Implement Secrets Manager integration
     - Create `getYouTubeApiKey()` function to retrieve API key from Secrets Manager
     - Handle errors and return descriptive messages
     - _Requirements: 4.1, 8.2_
   
-  - [ ] 4.2 Implement URL parsing logic
+  - [x] 4.2 Implement URL parsing logic
     - Create `extractChannelId(url)` function supporting multiple URL formats
     - Handle /channel/, /@handle, /c/, /user/ formats
     - Return error for invalid URLs
     - _Requirements: 4.2, 4.7, 8.5_
   
-  - [ ]* 4.3 Write property test for URL parsing
+  - [x] 4.3 Write property test for URL parsing
     - **Property 1: URL Parsing Extracts Channel ID**
     - **Validates: Requirements 4.2**
     - Generate various valid YouTube URL formats
     - Verify all extract non-empty channel IDs
 
-- [ ] 5. Implement YouTube API integration
-  - [ ] 5.1 Implement channel metadata fetching
+- [x] 5. Implement YouTube API integration
+  - [x] 5.1 Implement channel metadata fetching
     - Create `fetchChannelMetadata(channelId, apiKey)` function
     - Call YouTube channels.list API
     - Parse and return channel name
     - Handle API errors (404, 403, 500)
     - _Requirements: 4.3, 4.6, 8.3_
   
-  - [ ] 5.2 Implement video fetching with pagination
+  - [x] 5.2 Implement video fetching with pagination
     - Create `fetchAllVideos(channelId, apiKey)` function
     - Call YouTube search.list API with pagination
     - Call YouTube videos.list API for video details
     - Loop through all pages until no nextPageToken
     - _Requirements: 4.4, 4.5_
   
-  - [ ]* 5.3 Write property test for pagination completeness
+  - [x] 5.3 Write property test for pagination completeness
     - **Property 6: Pagination Completeness**
     - **Validates: Requirements 4.4**
     - Mock API with multiple pages of videos
     - Verify all videos across pages are fetched
   
-  - [ ]* 5.4 Write property test for video metadata completeness
+  - [x] 5.4 Write property test for video metadata completeness
     - **Property 4: Video Metadata Completeness**
     - **Validates: Requirements 4.5, 5.7**
     - Generate random video data from mocked API
     - Verify all videos have required fields
 
-- [ ] 6. Checkpoint - Verify API integration
+- [x] 6. Checkpoint - Verify API integration
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Implement database operations
-  - [ ] 7.1 Implement channel upsert logic
+- [x] 7. Implement database operations
+  - [x] 7.1 Implement channel upsert logic
     - Create `upsertChannel(channelData, owner)` function
     - Query for existing channel by youtubeChannelId
     - Create new channel if not exists
@@ -112,7 +112,7 @@ This implementation plan refactors the "say-hello" Lambda function into "fetch-c
     - Test new channel creation has all fields
     - Test existing channel update preserves ID
   
-  - [ ] 7.3 Implement video save with deduplication
+  - [x] 7.3 Implement video save with deduplication
     - Create `saveVideos(videos, channelId, owner)` function
     - Query for existing videos by youtubeId
     - Skip videos that already exist

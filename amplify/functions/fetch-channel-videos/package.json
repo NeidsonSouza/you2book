@@ -5,11 +5,17 @@
   "dependencies": {
     "googleapis": "^144.0.0",
     "@aws-sdk/client-secrets-manager": "^3.0.0",
-    "axios": "^1.7.0"
+    "axios": "^1.7.0",
+    "aws-amplify": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
-    "aws-sdk-client-mock": "^3.0.0"
+    "aws-sdk-client-mock": "^3.0.0",
+    "vitest": "^1.0.0",
+    "fast-check": "^3.0.0"
+  },
+  "scripts": {
+    "test": "vitest"
   }
 }
