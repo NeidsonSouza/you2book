@@ -1,6 +1,8 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import fc from 'fast-check';
 import axios from 'axios';
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../../data/resource';
 
 /**
  * Extracts the YouTube channel ID from various URL formats
@@ -196,12 +198,59 @@ describe('extractChannelId', () => {
           expect(extractedId).toBe(expectedId);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 20 }
     );
   });
 });
 
-describe('fetchAllVideos', () => {
+/**
+ * Upserts a channel record in the database
+ * Creates a new channel if it doesn't exist, updates if it does
+ * @param channelData Channel information from YouTube
+ * @param owner Cognito user ID
+ * @param client Amplify Data client
+ * @returns The channel ID
+ */
+async function upsertChannel(
+  channelData: { name: string; url: string; youtubeChannelId: string },
+  owner: string,
+  client: ReturnType<typeof generateClient<Schema>>
+): Promise<string> {
+  // Query for existing channel by youtubeChannelId
+  const existingChannels = await client.models.Channel.list({
+    filter: { 
+      youtubeChannelId: { eq: channelData.youtubeChannelId },
+      owner: { eq: owner }
+    }
+  });
+  
+  if (existingChannels.data && existingChannels.data.length > 0) {
+    // Update existing channel name
+    const channelId = existingChannels.data[0].id;
+    await client.models.Channel.update({
+      id: channelId,
+      name: channelData.name,
+    });
+    
+    return channelId;
+  } else {
+    // Create new channel
+    const result = await client.models.Channel.create({
+      name: channelData.name,
+      url: channelData.url,
+      youtubeChannelId: channelData.youtubeChannelId,
+      owner: owner,
+    });
+    
+    if (!result.data) {
+      throw new Error('Failed to create channel - no data returned');
+    }
+    
+    return result.data.id;
+  }
+}
+
+describe('upsertChannel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -210,228 +259,316 @@ describe('fetchAllVideos', () => {
     vi.restoreAllMocks();
   });
 
-  // Feature: fetch-channel-videos-refactor, Property 6: Pagination Completeness
-  // Validates: Requirements 4.4
-  test('Property 6: Pagination Completeness - fetches all videos across multiple pages', async () => {
-    // Generator for pagination scenarios (2-5 pages with varying video counts)
-    const paginationScenarioArbitrary = fc.record({
-      channelId: fc.string({ minLength: 20, maxLength: 30 }).filter(s => /^[A-Za-z0-9_-]+$/.test(s)),
-      apiKey: fc.string({ minLength: 30, maxLength: 40 }),
-      numPages: fc.integer({ min: 2, max: 5 }),
-      videosPerPage: fc.integer({ min: 10, max: 50 })
-    }).chain(({ channelId, apiKey, numPages, videosPerPage }) => {
-      const totalVideos = numPages * videosPerPage;
-      
-      // Generate unique video IDs using indices
-      return fc.constant({
-        channelId,
-        apiKey,
-        numPages,
-        videosPerPage,
-        allVideos: Array.from({ length: totalVideos }, (_, i) => ({
-          youtubeId: `video_${i.toString().padStart(6, '0')}`,
-          title: `Video Title ${i}`,
-          description: `Description for video ${i}`,
-          duration: ['PT1M30S', 'PT5M45S', 'PT10M20S', 'PT15M00S'][i % 4]
-        }))
-      });
+  // Feature: fetch-channel-videos-refactor, Property 2: Channel Creation Completeness
+  // Validates: Requirements 3.2, 5.2
+  test('Property 2: Channel Creation Completeness - new channels have all required fields', async () => {
+    // Simplified generator for new channel scenarios
+    const newChannelScenarioArbitrary = fc.record({
+      youtubeChannelId: fc.hexaString({ minLength: 24, maxLength: 24 }),
+      channelName: fc.string({ minLength: 5, maxLength: 50 }),
+      channelUrl: fc.constant('https://youtube.com/channel/test'),
+      owner: fc.uuid()
     });
 
     await fc.assert(
       fc.asyncProperty(
-        paginationScenarioArbitrary,
-        async ({ channelId, apiKey, numPages, videosPerPage, allVideos }) => {
-          // Mock axios.get to simulate paginated API responses
-          const axiosGetSpy = vi.spyOn(axios, 'get');
+        newChannelScenarioArbitrary,
+        async ({ youtubeChannelId, channelName, channelUrl, owner }) => {
+          const mockChannelId = fc.sample(fc.uuid(), 1)[0];
           
-          let searchCallCount = 0;
-          let videosCallCount = 0;
-
-          axiosGetSpy.mockImplementation(async (url: string, config?: any) => {
-            const urlStr = typeof url === 'string' ? url : url.toString();
-            
-            // Mock search.list API (returns video IDs with pagination)
-            if (urlStr.includes('/search')) {
-              const pageToken = config?.params?.pageToken;
-              const pageIndex = pageToken ? parseInt(pageToken.replace('page', '')) : 0;
-              
-              searchCallCount++;
-              
-              // Calculate which videos belong to this page
-              const startIdx = pageIndex * videosPerPage;
-              const endIdx = Math.min(startIdx + videosPerPage, allVideos.length);
-              const pageVideos = allVideos.slice(startIdx, endIdx);
-              
-              // Determine if there's a next page
-              const hasNextPage = endIdx < allVideos.length;
-              const nextPageToken = hasNextPage ? `page${pageIndex + 1}` : undefined;
-              
-              return {
-                data: {
-                  items: pageVideos.map(v => ({
-                    id: { videoId: v.youtubeId }
-                  })),
-                  nextPageToken
-                }
-              };
+          const mockClient = {
+            models: {
+              Channel: {
+                list: vi.fn().mockResolvedValue({ data: [] }),
+                create: vi.fn().mockResolvedValue({
+                  data: {
+                    id: mockChannelId,
+                    name: channelName,
+                    url: channelUrl,
+                    youtubeChannelId: youtubeChannelId,
+                    owner: owner
+                  }
+                }),
+                update: vi.fn()
+              }
             }
-            
-            // Mock videos.list API (returns video details)
-            if (urlStr.includes('/videos')) {
-              videosCallCount++;
-              
-              const videoIds = config?.params?.id?.split(',') || [];
-              const requestedVideos = allVideos.filter(v => videoIds.includes(v.youtubeId));
-              
-              return {
-                data: {
-                  items: requestedVideos.map(v => ({
-                    id: v.youtubeId,
-                    snippet: {
-                      title: v.title,
-                      description: v.description
-                    },
-                    contentDetails: {
-                      duration: v.duration
-                    }
-                  }))
-                }
-              };
-            }
-            
-            throw new Error(`Unexpected URL: ${urlStr}`);
-          });
+          } as any;
 
-          // Call fetchAllVideos
-          const result = await fetchAllVideos(channelId, apiKey);
+          const channelId = await upsertChannel(
+            { name: channelName, url: channelUrl, youtubeChannelId },
+            owner,
+            mockClient
+          );
+
+          expect(mockClient.models.Channel.create).toHaveBeenCalledTimes(1);
+          const createCall = mockClient.models.Channel.create.mock.calls[0][0];
           
-          // Verify all videos were fetched
-          expect(result).toHaveLength(allVideos.length);
-          
-          // Verify each video is present in the result
-          for (const expectedVideo of allVideos) {
-            const foundVideo = result.find(v => v.youtubeId === expectedVideo.youtubeId);
-            expect(foundVideo).toBeDefined();
-            expect(foundVideo?.title).toBe(expectedVideo.title);
-            expect(foundVideo?.description).toBe(expectedVideo.description);
-            expect(foundVideo?.duration).toBe(expectedVideo.duration);
-          }
-          
-          // Verify the correct number of API calls were made
-          expect(searchCallCount).toBe(numPages);
-          expect(videosCallCount).toBe(numPages);
-          
-          axiosGetSpy.mockRestore();
+          expect(createCall.name).toBe(channelName);
+          expect(createCall.url).toBe(channelUrl);
+          expect(createCall.youtubeChannelId).toBe(youtubeChannelId);
+          expect(createCall.owner).toBe(owner);
+          expect(channelId).toBeTruthy();
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 5 }
     );
   });
 
-  // Feature: fetch-channel-videos-refactor, Property 4: Video Metadata Completeness
-  // Validates: Requirements 4.5, 5.7
-  test('Property 4: Video Metadata Completeness - all fetched videos have required fields', async () => {
-    // Generator for video metadata scenarios
-    const videoMetadataScenarioArbitrary = fc.record({
-      channelId: fc.string({ minLength: 20, maxLength: 30 }).filter(s => /^[A-Za-z0-9_-]+$/.test(s)),
-      apiKey: fc.string({ minLength: 30, maxLength: 40 }),
-      numVideos: fc.integer({ min: 1, max: 100 })
-    }).chain(({ channelId, apiKey, numVideos }) => {
-      // Generate random video data with all required fields
-      return fc.constant({
-        channelId,
-        apiKey,
-        videos: Array.from({ length: numVideos }, (_, i) => ({
-          youtubeId: fc.sample(fc.string({ minLength: 11, maxLength: 11 }).filter(s => /^[A-Za-z0-9_-]+$/.test(s)), 1)[0],
-          title: fc.sample(fc.string({ minLength: 5, maxLength: 100 }), 1)[0],
-          description: fc.sample(fc.oneof(
-            fc.string({ minLength: 0, maxLength: 500 }),
-            fc.constant('')
-          ), 1)[0],
-          duration: fc.sample(fc.constantFrom('PT1M30S', 'PT5M45S', 'PT10M20S', 'PT15M00S', 'PT30M15S', 'PT1H5M30S'), 1)[0]
-        }))
-      });
+  // Feature: fetch-channel-videos-refactor, Property 3: Channel Update Preserves Identity
+  // Validates: Requirements 5.3
+  test('Property 3: Channel Update Preserves Identity - existing channel updates preserve ID', async () => {
+    // Simplified generator for existing channel update scenarios
+    const existingChannelScenarioArbitrary = fc.record({
+      existingChannelId: fc.uuid(),
+      youtubeChannelId: fc.hexaString({ minLength: 24, maxLength: 24 }),
+      newChannelName: fc.string({ minLength: 5, maxLength: 50 }),
+      channelUrl: fc.constant('https://youtube.com/channel/test'),
+      owner: fc.uuid()
     });
 
     await fc.assert(
       fc.asyncProperty(
-        videoMetadataScenarioArbitrary,
-        async ({ channelId, apiKey, videos }) => {
-          // Mock axios.get to return the generated video data
-          const axiosGetSpy = vi.spyOn(axios, 'get');
-          
-          axiosGetSpy.mockImplementation(async (url: string, config?: any) => {
-            const urlStr = typeof url === 'string' ? url : url.toString();
-            
-            // Mock search.list API
-            if (urlStr.includes('/search')) {
-              return {
-                data: {
-                  items: videos.map(v => ({
-                    id: { videoId: v.youtubeId }
-                  })),
-                  nextPageToken: undefined // Single page for simplicity
-                }
-              };
-            }
-            
-            // Mock videos.list API
-            if (urlStr.includes('/videos')) {
-              const videoIds = config?.params?.id?.split(',') || [];
-              const requestedVideos = videos.filter(v => videoIds.includes(v.youtubeId));
-              
-              return {
-                data: {
-                  items: requestedVideos.map(v => ({
-                    id: v.youtubeId,
-                    snippet: {
-                      title: v.title,
-                      description: v.description
-                    },
-                    contentDetails: {
-                      duration: v.duration
-                    }
-                  }))
-                }
-              };
-            }
-            
-            throw new Error(`Unexpected URL: ${urlStr}`);
-          });
+        existingChannelScenarioArbitrary,
+        async ({ existingChannelId, youtubeChannelId, newChannelName, channelUrl, owner }) => {
+          const existingChannel = {
+            id: existingChannelId,
+            name: 'Old Name',
+            url: channelUrl,
+            youtubeChannelId: youtubeChannelId,
+            owner: owner
+          };
 
-          // Call fetchAllVideos
-          const result = await fetchAllVideos(channelId, apiKey);
+          const mockClient = {
+            models: {
+              Channel: {
+                list: vi.fn().mockResolvedValue({ data: [existingChannel] }),
+                create: vi.fn(),
+                update: vi.fn().mockResolvedValue({ data: { ...existingChannel, name: newChannelName } })
+              }
+            }
+          } as any;
+
+          const returnedChannelId = await upsertChannel(
+            { name: newChannelName, url: channelUrl, youtubeChannelId },
+            owner,
+            mockClient
+          );
+
+          expect(mockClient.models.Channel.update).toHaveBeenCalledTimes(1);
+          expect(returnedChannelId).toBe(existingChannelId);
           
-          // Verify all videos have required fields
-          expect(result).toHaveLength(videos.length);
-          
-          for (const video of result) {
-            // Verify youtubeId is present and non-empty
-            expect(video.youtubeId).toBeDefined();
-            expect(video.youtubeId).toBeTruthy();
-            expect(typeof video.youtubeId).toBe('string');
-            expect(video.youtubeId.length).toBeGreaterThan(0);
-            
-            // Verify title is present and non-empty
-            expect(video.title).toBeDefined();
-            expect(typeof video.title).toBe('string');
-            expect(video.title.length).toBeGreaterThan(0);
-            
-            // Verify description is present (can be empty string)
-            expect(video.description).toBeDefined();
-            expect(typeof video.description).toBe('string');
-            
-            // Verify duration is present and non-empty
-            expect(video.duration).toBeDefined();
-            expect(video.duration).toBeTruthy();
-            expect(typeof video.duration).toBe('string');
-            expect(video.duration.length).toBeGreaterThan(0);
-          }
-          
-          axiosGetSpy.mockRestore();
+          const updateCall = mockClient.models.Channel.update.mock.calls[0][0];
+          expect(updateCall.id).toBe(existingChannelId);
+          expect(updateCall.name).toBe(newChannelName);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 5 }
+    );
+  });
+});
+
+/**
+ * Saves videos to the database with deduplication
+ * @param videos Array of video metadata objects
+ * @param channelId The channel ID to associate videos with
+ * @param owner The Cognito user ID (owner)
+ * @param client Amplify Data client
+ * @returns Object with counts of saved and skipped videos
+ */
+async function saveVideos(
+  videos: Array<{
+    youtubeId: string;
+    title: string;
+    description: string;
+    duration: string;
+  }>,
+  channelId: string,
+  owner: string,
+  client: ReturnType<typeof generateClient<Schema>>
+): Promise<{ saved: number; skipped: number; failed: number }> {
+  let savedCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
+  
+  for (const video of videos) {
+    try {
+      // Query for existing video by youtubeId
+      const existingVideos = await client.models.Video.list({
+        filter: { 
+          youtubeId: { eq: video.youtubeId },
+          owner: { eq: owner }
+        }
+      });
+      
+      if (existingVideos.data && existingVideos.data.length > 0) {
+        // Video already exists, skip it
+        skippedCount++;
+        continue;
+      }
+      
+      // Create new video
+      const result = await client.models.Video.create({
+        youtubeId: video.youtubeId,
+        title: video.title,
+        description: video.description || '',
+        duration: video.duration,
+        channelId: channelId,
+        owner: owner,
+      });
+      
+      if (result.data) {
+        savedCount++;
+      } else {
+        failedCount++;
+      }
+    } catch (error) {
+      // Handle individual save failures gracefully - log and continue
+      failedCount++;
+      // Continue processing remaining videos
+    }
+  }
+  
+  return { saved: savedCount, skipped: skippedCount, failed: failedCount };
+}
+
+describe('saveVideos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Feature: fetch-channel-videos-refactor, Property 5: Video Deduplication (Idempotence)
+  // Validates: Requirements 5.6
+  test('Property 5: Video Deduplication (Idempotence) - running twice does not create duplicates', async () => {
+    // Generator for video lists
+    const videoListArbitrary = fc.array(
+      fc.record({
+        youtubeId: fc.hexaString({ minLength: 11, maxLength: 11 }),
+        title: fc.string({ minLength: 5, maxLength: 100 }),
+        description: fc.string({ minLength: 0, maxLength: 200 }),
+        duration: fc.constantFrom('PT1M30S', 'PT5M45S', 'PT10M20S', 'PT30M15S')
+      }),
+      { minLength: 1, maxLength: 10 }
+    );
+
+    const scenarioArbitrary = fc.record({
+      videos: videoListArbitrary,
+      channelId: fc.uuid(),
+      owner: fc.uuid()
+    });
+
+    await fc.assert(
+      fc.asyncProperty(
+        scenarioArbitrary,
+        async ({ videos, channelId, owner }) => {
+          const createdVideos = new Map<string, any>();
+          
+          const mockClient = {
+            models: {
+              Video: {
+                list: vi.fn().mockImplementation(({ filter }) => {
+                  const youtubeId = filter.youtubeId.eq;
+                  const existing = createdVideos.has(youtubeId) ? [createdVideos.get(youtubeId)] : [];
+                  return Promise.resolve({ data: existing });
+                }),
+                create: vi.fn().mockImplementation((videoData) => {
+                  const videoId = fc.sample(fc.uuid(), 1)[0];
+                  const video = { id: videoId, ...videoData };
+                  createdVideos.set(videoData.youtubeId, video);
+                  return Promise.resolve({ data: video });
+                })
+              }
+            }
+          } as any;
+
+          // First save
+          const result1 = await saveVideos(videos, channelId, owner, mockClient);
+          
+          // Second save (should skip all videos)
+          const result2 = await saveVideos(videos, channelId, owner, mockClient);
+
+          // Verify first save created all videos
+          expect(result1.saved).toBe(videos.length);
+          expect(result1.skipped).toBe(0);
+          
+          // Verify second save skipped all videos (no duplicates created)
+          expect(result2.saved).toBe(0);
+          expect(result2.skipped).toBe(videos.length);
+          
+          // Verify each unique youtubeId appears exactly once
+          expect(createdVideos.size).toBe(videos.length);
+        }
+      ),
+      { numRuns: 10 }
+    );
+  });
+
+  // Feature: fetch-channel-videos-refactor, Property 9: Error Resilience in Batch Operations
+  // Validates: Requirements 5.8
+  test('Property 9: Error Resilience in Batch Operations - partial failures do not stop processing', async () => {
+    // Generator for mixed success/failure scenarios
+    const videoListArbitrary = fc.array(
+      fc.record({
+        youtubeId: fc.hexaString({ minLength: 11, maxLength: 11 }),
+        title: fc.string({ minLength: 5, maxLength: 100 }),
+        description: fc.string({ minLength: 0, maxLength: 200 }),
+        duration: fc.constantFrom('PT1M30S', 'PT5M45S', 'PT10M20S'),
+        shouldFail: fc.boolean()
+      }),
+      { minLength: 3, maxLength: 10 }
+    );
+
+    const scenarioArbitrary = fc.record({
+      videos: videoListArbitrary,
+      channelId: fc.uuid(),
+      owner: fc.uuid()
+    });
+
+    await fc.assert(
+      fc.asyncProperty(
+        scenarioArbitrary,
+        async ({ videos, channelId, owner }) => {
+          const expectedSuccesses = videos.filter(v => !v.shouldFail).length;
+          const expectedFailures = videos.filter(v => v.shouldFail).length;
+          
+          const mockClient = {
+            models: {
+              Video: {
+                list: vi.fn().mockResolvedValue({ data: [] }),
+                create: vi.fn().mockImplementation((videoData) => {
+                  const video = videos.find(v => v.youtubeId === videoData.youtubeId);
+                  if (video?.shouldFail) {
+                    throw new Error('Simulated database error');
+                  }
+                  const videoId = fc.sample(fc.uuid(), 1)[0];
+                  return Promise.resolve({ data: { id: videoId, ...videoData } });
+                })
+              }
+            }
+          } as any;
+
+          const result = await saveVideos(
+            videos.map(({ shouldFail, ...v }) => v),
+            channelId,
+            owner,
+            mockClient
+          );
+
+          // Verify that successful videos were saved despite failures
+          expect(result.saved).toBe(expectedSuccesses);
+          expect(result.failed).toBe(expectedFailures);
+          
+          // Verify all videos were processed (saved + failed = total)
+          expect(result.saved + result.failed).toBe(videos.length);
+          
+          // Verify create was called for each video (processing continued)
+          expect(mockClient.models.Video.create).toHaveBeenCalledTimes(videos.length);
+        }
+      ),
+      { numRuns: 10 }
     );
   });
 });

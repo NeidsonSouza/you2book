@@ -104,7 +104,7 @@ This implementation plan refactors the "say-hello" Lambda function into "fetch-c
     - Return channel ID
     - _Requirements: 5.1, 5.2, 5.3_
   
-  - [ ]* 7.2 Write property tests for channel operations
+  - [x] 7.2 Write property tests for channel operations
     - **Property 2: Channel Creation Completeness**
     - **Validates: Requirements 3.2, 5.2**
     - **Property 3: Channel Update Preserves Identity**
@@ -120,7 +120,7 @@ This implementation plan refactors the "say-hello" Lambda function into "fetch-c
     - Handle individual save failures gracefully
     - _Requirements: 5.4, 5.5, 5.6, 5.7, 5.8_
   
-  - [ ]* 7.4 Write property tests for video operations
+  - [x] 7.4 Write property tests for video operations
     - **Property 5: Video Deduplication (Idempotence)**
     - **Validates: Requirements 5.6**
     - **Property 9: Error Resilience in Batch Operations**
