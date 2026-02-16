@@ -1,94 +1,17 @@
-import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { generateClient } from 'aws-amplify/data';
-import type { Schema } from '../amplify/data/resource';
+
 import { formatDate } from './lib/utils';
+import { useChannelEbooks } from './hooks/useChannelEbooks';
 
-const client = generateClient<Schema>();
-
-function ChannelDetail() {
+function ChannelDetail(): React.JSX.Element {
   const { channelUrl } = useParams<{ channelUrl: string }>();
   const navigate = useNavigate();
 
   const decodedUrl = channelUrl ? decodeURIComponent(channelUrl) : '';
-  
-  // State management for data fetching
-  type EbookWithVideos = {
-    id: string;
-    title: string;
-    pageCount: number;
-    generatedDate: string;
-    pdfUrl: string;
-    channelId: string;
-    owner: string | null;
-    createdAt: string;
-    updatedAt: string;
-    sourceVideos: Array<{
-      id: string;
-      title: string;
-      url: string;
-      ebookId: string;
-      owner?: string | null;
-      createdAt: string;
-      updatedAt: string;
-    }>;
-  };
-  
-  const [ebooks, setEbooks] = useState<EbookWithVideos[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Extract channelId - using the decoded URL as the channel identifier
   const channelId = decodedUrl;
   
-  // Data fetching logic
-  useEffect(() => {
-    async function fetchEbooks() {
-      setLoading(true);
-      setError(null);
-      
-      try {
-        // Query Ebook model with filter by channelId
-        const response = await client.models.Ebook.list({
-          filter: { channelId: { eq: channelId } }
-        });
-        
-        // For each ebook, load related sourceVideos using Promise.all for parallel loading
-        const ebooksWithVideos = await Promise.all(
-          response.data.map(async (ebook) => {
-            const videosResponse = await ebook.sourceVideos();
-            return {
-              id: ebook.id,
-              title: ebook.title,
-              pageCount: ebook.pageCount,
-              generatedDate: ebook.generatedDate,
-              pdfUrl: ebook.pdfUrl,
-              channelId: ebook.channelId,
-              owner: ebook.owner,
-              createdAt: ebook.createdAt,
-              updatedAt: ebook.updatedAt,
-              sourceVideos: videosResponse.data
-            };
-          })
-        );
-        
-        // Set ebooks state with fetched data
-        setEbooks(ebooksWithVideos);
-      } catch (err) {
-        // Handle errors with try-catch, log to console, set user-friendly error message
-        console.error('Error fetching ebooks:', err);
-        setError('Failed to load ebooks. Please try again.');
-      } finally {
-        // Set loading to false in finally block
-        setLoading(false);
-      }
-    }
-    
-    // Only fetch if channelId exists
-    if (channelId) {
-      fetchEbooks();
-    }
-  }, [channelId]);
+  // Use custom hook for data fetching
+  const { ebooks, loading, error } = useChannelEbooks(channelId);
   
   return (
     <div className="bg-gray-50 min-h-screen">

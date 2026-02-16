@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import type { Schema } from "../amplify/data/resource";
-import VideoItem from "./VideoItem";
+
+import type { Video } from "./types";
 import { client } from './lib/amplifyClient';
+import VideoItem from "./VideoItem";
 
 interface VideoListProps {
   channelId: string;
 }
 
-function VideoList({ channelId }: VideoListProps) {
-  const [videos, setVideos] = useState<Array<Schema["Video"]["type"]>>([]);
+function VideoList({ channelId }: VideoListProps): React.JSX.Element {
+  const [videos, setVideos] = useState<Array<Video>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

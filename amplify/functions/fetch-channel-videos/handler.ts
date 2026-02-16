@@ -1,8 +1,13 @@
-import type { Schema } from "../../data/resource"
+// External libraries
 import axios from "axios"
+
+// AWS Amplify SDK
 import { Amplify } from "aws-amplify"
 import { generateClient } from "aws-amplify/data"
 import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime'
+
+// Local modules
+import type { Schema } from "../../data/resource"
 import { env } from "$amplify/env/fetch-channel-videos"
 
 // Configure Amplify for Lambda environment using the official helper

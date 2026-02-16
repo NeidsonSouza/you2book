@@ -1,5 +1,13 @@
 import { client } from '../lib/amplifyClient';
 
+/**
+ * Deletes a channel and all associated resources (videos, ebooks, ebook-video relationships).
+ * Collects all errors during the deletion process and throws a summary error if any occur.
+ * 
+ * @param channelId - The unique identifier of the channel to delete
+ * @throws {Error} If any deletion operation fails, with details of all failures
+ * @returns A promise that resolves when the channel and all related data are deleted
+ */
 export async function deleteChannel(channelId: string): Promise<void> {
   const errors: string[] = [];
 

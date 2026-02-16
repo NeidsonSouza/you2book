@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { fetchVideosFromYouTube, type VideoMetadata } from './youtubeService';
 import * as amplifyClient from '../lib/amplifyClient';
@@ -12,8 +11,15 @@ vi.mock('../lib/amplifyClient', () => ({
   },
 }));
 
+// Type for the mocked client
+interface MockClient {
+  queries: {
+    fetchChannelVideos: ReturnType<typeof vi.fn>;
+  };
+}
+
 describe('fetchVideosFromYouTube', () => {
-  const mockClient = amplifyClient.client as any;
+  const mockClient = amplifyClient.client as unknown as MockClient;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -116,7 +122,7 @@ describe('fetchVideosFromYouTube', () => {
         success: true,
         message: 'Invalid response',
         timestamp: '2024-01-01T00:00:00Z',
-        videos: 'not an array' as any,
+        videos: 'not an array' as unknown as VideoMetadata[],
       },
       errors: undefined,
     });

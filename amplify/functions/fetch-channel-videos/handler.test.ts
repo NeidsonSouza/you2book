@@ -552,7 +552,6 @@ describe('saveVideos', () => {
           } as any;
 
           const result = await saveVideos(
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             videos.map(({ shouldFail: _, ...v }) => v),
             channelId,
             owner,

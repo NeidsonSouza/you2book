@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import type { Schema } from "../amplify/data/resource";
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { useNavigate } from 'react-router-dom';
+
+import type { Channel } from './types';
 import { deleteChannel } from './services/channelService';
 import { client } from './lib/amplifyClient';
 
-function App() {
+function App(): React.JSX.Element {
   const { user, signOut } = useAuthenticator();
   const navigate = useNavigate();
-  const [channels, setChannels] = useState<Array<Schema["Channel"]["type"]>>([]);
+  const [channels, setChannels] = useState<Array<Channel>>([]);
   const [newChannelUrl, setNewChannelUrl] = useState("");
   const [isCreatingChannel, setIsCreatingChannel] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -19,6 +20,11 @@ function App() {
     });
   }, []);
 
+  /**
+   * Creates a new channel by calling the Lambda function to fetch channel metadata and videos.
+   * Handles the entire channel creation workflow including YouTube API calls and database updates.
+   * @returns Promise that resolves when the channel is created
+   */
   async function createChannel(): Promise<void> {
     if (newChannelUrl.trim()) {
       setIsCreatingChannel(true);
@@ -62,16 +68,31 @@ function App() {
 
 
 
+  /**
+   * Handles form submission for adding a new channel.
+   * Prevents default form behavior and triggers channel creation.
+   * @param e - The form submission event
+   */
   function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault();
     createChannel();
   }
 
+  /**
+   * Navigates to the channel detail page for the specified channel.
+   * @param url - The channel URL to navigate to
+   */
   function handleChannelClick(url: string): void {
     const encodedUrl = encodeURIComponent(url);
     navigate(`/channel/${encodedUrl}`);
   }
 
+  /**
+   * Handles channel deletion with user confirmation.
+   * Deletes the channel and all associated videos from the database.
+   * @param id - The channel ID to delete
+   * @returns Promise that resolves when the channel is deleted
+   */
   async function handleDeleteClick(id: string): Promise<void> {
     if (window.confirm("Are you sure you want to delete this channel and all its videos?")) {
       try {
