@@ -1,14 +1,16 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
-import { sayHello } from "../functions/say-hello/resource"
+import { fetchChannelVideos } from "../functions/fetch-channel-videos/resource"
 
 const schema = a.schema({
   Channel: a
     .model({
-      name: a.string(), // Remove .required() to allow null values
+      name: a.string(),
       url: a.string().required(),
+      youtubeChannelId: a.string(),
       ebooks: a.hasMany('Ebook', 'channelId'),
       videos: a.hasMany('Video', 'channelId'),
       bookGroups: a.hasMany('BookGroup', 'channelId'),
+      owner: a.string().authorization(allow => [allow.owner().to(['read', 'delete'])]),
     }).authorization(allow => [allow.owner()]),
 
   Video: a
@@ -20,6 +22,7 @@ const schema = a.schema({
       summary: a.string(),
       channelId: a.id().required(),
       channel: a.belongsTo('Channel', 'channelId'),
+      owner: a.string().authorization(allow => [allow.owner().to(['read', 'delete'])]),
     })
     .authorization(allow => [allow.owner()])
     .secondaryIndexes(index => [
@@ -27,13 +30,13 @@ const schema = a.schema({
       index('channelId').name('byChannel')
     ]),
 
-  // Keep the existing ebook-related video model with a different name
   EbookVideo: a
     .model({
       title: a.string().required(),
       url: a.string().required(),
       ebookId: a.id().required(),
       ebook: a.belongsTo('Ebook', 'ebookId'),
+      owner: a.string().authorization(allow => [allow.owner().to(['read', 'delete'])]),
     }).authorization(allow => [allow.owner()]),
 
   Ebook: a
@@ -45,6 +48,7 @@ const schema = a.schema({
       channelId: a.id().required(),
       channel: a.belongsTo('Channel', 'channelId'),
       sourceVideos: a.hasMany('EbookVideo', 'ebookId'),
+      owner: a.string().authorization(allow => [allow.owner().to(['read', 'delete'])]),
     }).authorization(allow => [allow.owner()]),
 
   BookGroup: a
@@ -55,6 +59,7 @@ const schema = a.schema({
       themeDescription: a.string(),
       videoIds: a.string().array().required(),
       createdAt: a.datetime().required(),
+      owner: a.string().authorization(allow => [allow.owner().to(['read', 'delete'])]),
     })
     .authorization(allow => [allow.owner()])
     .secondaryIndexes(index => [
@@ -68,23 +73,23 @@ const schema = a.schema({
     duration: a.string().required(),
   }),
 
-  SayHelloResponse: a.customType({
+  FetchChannelVideosResponse: a.customType({
     message: a.string().required(),
     timestamp: a.string().required(),
     success: a.boolean().required(),
     videos: a.ref('VideoMetadata').array().required(),
   }),
     
-  sayHello: a
+  fetchChannelVideos: a
     .query()
     .arguments({
-      name: a.string(),
+      channelUrl: a.string().required(),
     })
-    .returns(a.ref('SayHelloResponse'))
+    .returns(a.ref('FetchChannelVideosResponse'))
     .authorization(allow => [allow.authenticated()])
-    .handler(a.handler.function(sayHello)),
+    .handler(a.handler.function(fetchChannelVideos)),
 
-})
+}).authorization(allow => [allow.resource(fetchChannelVideos)])
 
 export type Schema = ClientSchema<typeof schema>;
 

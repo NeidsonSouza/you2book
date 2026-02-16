@@ -1,19 +1,15 @@
 import { useEffect, useState } from "react";
-import type { Schema } from "../amplify/data/resource";
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  fetchVideosFromYouTube, 
-  saveVideosToDatabase, 
-  extractChannelNameFromUrl 
-} from './services/youtubeService';
+
+import type { Channel } from './types';
 import { deleteChannel } from './services/channelService';
 import { client } from './lib/amplifyClient';
 
-function App() {
+function App(): React.JSX.Element {
   const { user, signOut } = useAuthenticator();
   const navigate = useNavigate();
-  const [channels, setChannels] = useState<Array<Schema["Channel"]["type"]>>([]);
+  const [channels, setChannels] = useState<Array<Channel>>([]);
   const [newChannelUrl, setNewChannelUrl] = useState("");
   const [isCreatingChannel, setIsCreatingChannel] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -24,58 +20,79 @@ function App() {
     });
   }, []);
 
-  function createChannel(): void {
+  /**
+   * Creates a new channel by calling the Lambda function to fetch channel metadata and videos.
+   * Handles the entire channel creation workflow including YouTube API calls and database updates.
+   * @returns Promise that resolves when the channel is created
+   */
+  async function createChannel(): Promise<void> {
     if (newChannelUrl.trim()) {
       setIsCreatingChannel(true);
       setFetchError(null);
       
-      // Extract channel name from URL or use a default
-      const channelName = extractChannelNameFromUrl(newChannelUrl.trim()) || 'New Channel';
       const channelUrl = newChannelUrl.trim();
       
-      client.models.Channel.create({ 
-        name: channelName,
-        url: channelUrl 
-      }).then(async (result) => {
-        if (result.data && result.data.id) {
-          // Fetch videos using the custom query
-          try {
-            const videos = await fetchVideosFromYouTube(channelUrl);
-            
-            if (videos.length > 0) {
-              // Save videos to DynamoDB using Amplify Data client
-              await saveVideosToDatabase(videos, result.data.id);
-              console.log(`Successfully saved ${videos.length} videos`);
-            } else {
-              console.log('No videos found for this channel');
-            }
-          } catch (error) {
-            console.error('Error fetching or saving videos:', error);
-            setFetchError('Failed to fetch videos: ' + (error as Error).message);
-          }
+      try {
+        // Call the Lambda function which handles everything:
+        // - Extracts channel ID from URL
+        // - Fetches channel metadata from YouTube
+        // - Creates/updates channel in database
+        // - Fetches all videos from YouTube
+        // - Saves videos to database
+        const result = await client.queries.fetchChannelVideos({
+          channelUrl: channelUrl,
+        });
+
+        if (result.errors) {
+          throw new Error(result.errors.map(e => e.message).join(', '));
         }
-        setIsCreatingChannel(false);
+
+        if (!result.data) {
+          throw new Error('No data returned from query');
+        }
+
+        if (!result.data.success) {
+          throw new Error(result.data.message);
+        }
+
+        console.log(result.data.message);
         setNewChannelUrl("");
-      }).catch((error) => {
-        console.error('Error creating channel:', error);
-        setFetchError('Failed to create channel: ' + (error as Error).message);
+      } catch (error) {
+        console.error('Error adding channel:', error);
+        setFetchError('Failed to add channel: ' + (error as Error).message);
+      } finally {
         setIsCreatingChannel(false);
-      });
+      }
     }
   }
 
 
 
+  /**
+   * Handles form submission for adding a new channel.
+   * Prevents default form behavior and triggers channel creation.
+   * @param e - The form submission event
+   */
   function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault();
     createChannel();
   }
 
+  /**
+   * Navigates to the channel detail page for the specified channel.
+   * @param url - The channel URL to navigate to
+   */
   function handleChannelClick(url: string): void {
     const encodedUrl = encodeURIComponent(url);
     navigate(`/channel/${encodedUrl}`);
   }
 
+  /**
+   * Handles channel deletion with user confirmation.
+   * Deletes the channel and all associated videos from the database.
+   * @param id - The channel ID to delete
+   * @returns Promise that resolves when the channel is deleted
+   */
   async function handleDeleteClick(id: string): Promise<void> {
     if (window.confirm("Are you sure you want to delete this channel and all its videos?")) {
       try {

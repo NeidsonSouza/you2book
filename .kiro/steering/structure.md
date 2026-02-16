@@ -1,62 +1,67 @@
 # Project Structure
 
-## Project Overview
-
-Kapenz is building a web and mobile app that transforms entire YouTube channels into high-quality, well-written PDF ebooks. Users input one or more YouTube channel URLs, and for each channel, the AI-powered platform automatically analyzes the videos, clusters them into thematic groups based on content similarity and correlation (e.g., turning a series of correlated tutorials or lectures into a single cohesive book), removes redundancies to eliminate repeated information, and synthesizes the content into a clean, readable ebook—delivering the knowledge in a text-first format for people who prefer reading over watching videos.
-
-The core value is making substantial, information-dense YouTube content (like educational series, in-depth tutorials, lectures, self-improvement courses, or expertise-sharing channels) instantly accessible as polished books. The process is user-friendly: paste the channel URL → AI suggests logical video groups → user reviews and flexibly edits (reassign videos, exclude irrelevant ones) → one-click generate per group → receive a redundancy-free, well-structured PDF ebook with natural flow, chapters, and high-quality writing.
-
-These ebooks are delivered as well-written, high-quality PDFs (optimized for readability on any device, with features like table of contents and chapter headings; additional formats like EPUB could be added later for e-reader compatibility). Length varies by channel and group—typically 20–100+ pages depending on the depth and number of videos clustered (e.g., a focused 10–20 video series might yield a concise 30–60 page guide, while a comprehensive channel playlist could produce longer, textbook-like books).
-
-This solves a real pain for lifelong learners who love absorbing knowledge but find video consumption time-intensive, prefer skimming/searching text, or want offline/portable reference material without manual note-taking or transcription.
-
-## Root Layout
+## Root Directory
 ```
-/src                    # Frontend React application
-/amplify                # AWS Amplify backend configuration
-/public                 # Static assets
-/dist                   # Build output (generated)
+/
+├── src/                    # Frontend React application
+├── amplify/                # Backend infrastructure and Lambda functions
+├── public/                 # Static assets
+├── .kiro/                  # Kiro AI assistant configuration
+├── dist/                   # Production build output
+└── node_modules/           # Frontend dependencies
 ```
 
-## Frontend (`/src`)
+## Frontend Structure (`src/`)
 ```
-/src
-  App.tsx               # Main app component (channel list)
-  ChannelDetail.tsx     # Channel detail view
-  VideoItem.tsx         # Video display component
-  VideoList.tsx         # Video list component
-  /lib
-    amplifyClient.ts    # Amplify client configuration
-    utils.ts            # Utility functions
-  /services
-    channelService.ts   # Channel CRUD operations
-    youtubeService.ts   # YouTube API integration
-  /assets               # Images and static resources
-```
-
-## Backend (`/amplify`)
-```
-/amplify
-  backend.ts            # Backend resource definitions
-  /auth
-    resource.ts         # Cognito auth configuration
-  /data
-    resource.ts         # Data schema (models, queries, custom types)
-  /functions
-    /say-hello          # Example Lambda (Node.js/TypeScript)
-    /suggest-book-groups # Book grouping Lambda (Python)
+src/
+├── main.tsx               # Application entry point
+├── App.tsx                # Main app component with channel list
+├── ChannelDetail.tsx      # Channel detail view
+├── VideoList.tsx          # Video list component
+├── VideoItem.tsx          # Individual video component
+├── lib/
+│   ├── amplifyClient.ts   # Amplify client configuration
+│   └── utils.ts           # Utility functions (with .test.ts)
+└── services/
+    ├── channelService.ts  # Channel CRUD operations
+    └── youtubeService.ts  # YouTube API integration (with .test.ts)
 ```
 
-## Data Models
-- Channel: User's tracked YouTube channels
-- Video: Individual videos from channels
-- Ebook: Generated ebooks from video groups
-- EbookVideo: Videos associated with ebooks
-- BookGroup: Themed groupings of videos
+## Backend Structure (`amplify/`)
+```
+amplify/
+├── backend.ts             # Main backend configuration
+├── auth/
+│   └── resource.ts        # Cognito auth configuration
+├── data/
+│   └── resource.ts        # GraphQL schema and data models
+├── functions/
+│   └── fetch-channel-videos/
+│       ├── handler.ts     # Lambda function implementation
+│       ├── handler.test.ts # Lambda function tests
+│       ├── resource.ts    # Lambda resource definition
+│       ├── package.json   # Function-specific dependencies
+│       └── node_modules/  # Function-specific dependencies
+└── node_modules/          # Backend dependencies
+```
 
-## Key Patterns
-- Amplify Data client for database operations
-- Owner-based authorization (user can only access their own data)
-- Secondary indexes on Video (byYoutubeId, byChannel) and BookGroup (byChannel)
-- Custom queries via Lambda functions
-- Service layer pattern for business logic
+## Data Models (GraphQL Schema)
+- **Channel**: User's YouTube channels with owner-based authorization
+- **Video**: Videos from channels with metadata (title, description, duration)
+- **Ebook**: Generated ebooks from video collections (future feature)
+- **EbookVideo**: Junction table linking ebooks to source videos
+- **BookGroup**: Thematic groupings of videos for ebook generation
+
+## Key Conventions
+- Tests are co-located with source files using `.test.ts` suffix
+- Lambda functions have their own `package.json` and dependencies
+- All data models use owner-based authorization for multi-tenancy
+- GraphQL queries/mutations are defined in `amplify/data/resource.ts`
+- Frontend services abstract Amplify client operations
+- TypeScript is used throughout (strict mode enabled)
+
+## Authorization Pattern
+All models follow owner-based authorization:
+- Users can only access their own data
+- Owner field is automatically set from Cognito user identity
+- Read and delete operations are restricted to owners
