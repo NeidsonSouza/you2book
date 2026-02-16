@@ -766,12 +766,11 @@ describe('Response Formatting', () => {
         owner: fc.uuid()
       }),
       
-      // Secrets Manager failure scenarios
+      // API key configuration failure scenarios
       fc.record({
-        type: fc.constant('secrets_failure'),
+        type: fc.constant('api_key_missing'),
         channelUrl: fc.constant('https://youtube.com/channel/UC1234567890'),
-        owner: fc.uuid(),
-        secretsError: fc.constantFrom('AccessDenied', 'ResourceNotFound', 'InternalError')
+        owner: fc.uuid()
       }),
       
       // YouTube API error scenarios
@@ -808,10 +807,10 @@ describe('Response Formatting', () => {
               };
               break;
               
-            case 'secrets_failure':
+            case 'api_key_missing':
               mockResponse = {
                 success: false,
-                message: 'Failed to retrieve YouTube API key from Secrets Manager',
+                message: 'YouTube API key not configured. Please set the YOUTUBE_API_KEY secret.',
                 timestamp: new Date().toISOString(),
                 videos: []
               };
