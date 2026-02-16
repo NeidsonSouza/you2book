@@ -8,8 +8,8 @@ export interface VideoMetadata {
 }
 
 export async function fetchVideosFromYouTube(channelUrl: string): Promise<VideoMetadata[]> {
-  const result = await client.queries.sayHello({
-    name: channelUrl,
+  const result = await client.queries.fetchChannelVideos({
+    channelUrl: channelUrl,
   });
 
   if (result.errors) {

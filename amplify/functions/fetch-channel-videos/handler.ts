@@ -81,25 +81,25 @@ function extractChannelId(url: string): string {
     const pathname = urlObj.pathname
     
     // Handle /channel/{CHANNEL_ID} format
-    const channelMatch = pathname.match(/^\/channel\/([^\/]+)/)
+    const channelMatch = pathname.match(/^\/channel\/([^/]+)/)
     if (channelMatch) {
       return channelMatch[1]
     }
     
     // Handle /@{HANDLE} format
-    const handleMatch = pathname.match(/^\/@([^\/]+)/)
+    const handleMatch = pathname.match(/^\/@([^/]+)/)
     if (handleMatch) {
       return `@${handleMatch[1]}`
     }
     
     // Handle /c/{CUSTOM_URL} format
-    const customMatch = pathname.match(/^\/c\/([^\/]+)/)
+    const customMatch = pathname.match(/^\/c\/([^/]+)/)
     if (customMatch) {
       return customMatch[1]
     }
     
     // Handle /user/{USERNAME} format
-    const userMatch = pathname.match(/^\/user\/([^\/]+)/)
+    const userMatch = pathname.match(/^\/user\/([^/]+)/)
     if (userMatch) {
       return userMatch[1]
     }
@@ -223,7 +223,7 @@ async function fetchAllVideos(channelId: string, apiKey: string): Promise<YouTub
     do {
       // Step 1: Get video IDs from search.list
       const searchUrl = 'https://www.googleapis.com/youtube/v3/search'
-      const searchParams: any = {
+      const searchParams: Record<string, string | number> = {
         part: 'id',
         channelId: actualChannelId,
         type: 'video',
@@ -244,7 +244,7 @@ async function fetchAllVideos(channelId: string, apiKey: string): Promise<YouTub
       
       // Extract video IDs
       const videoIds = searchResponse.data.items
-        .map((item: any) => item.id.videoId)
+        .map((item: { id: { videoId: string } }) => item.id.videoId)
         .filter((id: string) => id) // Filter out any undefined IDs
       
       if (videoIds.length === 0) {

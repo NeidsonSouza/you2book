@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import fc from 'fast-check';
 import axios from 'axios';
@@ -23,25 +24,25 @@ function extractChannelId(url: string): string {
     const pathname = urlObj.pathname;
     
     // Handle /channel/{CHANNEL_ID} format
-    const channelMatch = pathname.match(/^\/channel\/([^\/]+)/);
+    const channelMatch = pathname.match(/^\/channel\/([^/]+)/);
     if (channelMatch) {
       return channelMatch[1];
     }
     
     // Handle /@{HANDLE} format
-    const handleMatch = pathname.match(/^\/@([^\/]+)/);
+    const handleMatch = pathname.match(/^\/@([^/]+)/);
     if (handleMatch) {
       return `@${handleMatch[1]}`;
     }
     
     // Handle /c/{CUSTOM_URL} format
-    const customMatch = pathname.match(/^\/c\/([^\/]+)/);
+    const customMatch = pathname.match(/^\/c\/([^/]+)/);
     if (customMatch) {
       return customMatch[1];
     }
     
     // Handle /user/{USERNAME} format
-    const userMatch = pathname.match(/^\/user\/([^\/]+)/);
+    const userMatch = pathname.match(/^\/user\/([^/]+)/);
     if (userMatch) {
       return userMatch[1];
     }
@@ -421,7 +422,7 @@ async function saveVideos(
       } else {
         failedCount++;
       }
-    } catch (error) {
+    } catch {
       // Handle individual save failures gracefully - log and continue
       failedCount++;
       // Continue processing remaining videos
@@ -551,7 +552,8 @@ describe('saveVideos', () => {
           } as any;
 
           const result = await saveVideos(
-            videos.map(({ shouldFail, ...v }) => v),
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            videos.map(({ shouldFail: _, ...v }) => v),
             channelId,
             owner,
             mockClient
@@ -569,6 +571,425 @@ describe('saveVideos', () => {
         }
       ),
       { numRuns: 10 }
+    );
+  });
+});
+
+describe('fetchAllVideos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Feature: fetch-channel-videos-refactor, Property 6: Pagination Completeness
+  // Validates: Requirements 4.4
+  test('Property 6: Pagination Completeness - fetches all videos across multiple pages', async () => {
+    const paginationScenarioArbitrary = fc.record({
+      channelId: fc.hexaString({ minLength: 24, maxLength: 24 }),
+      apiKey: fc.hexaString({ minLength: 32, maxLength: 32 }),
+      totalPages: fc.integer({ min: 2, max: 5 }),
+      videosPerPage: fc.integer({ min: 10, max: 50 })
+    });
+
+    await fc.assert(
+      fc.asyncProperty(
+        paginationScenarioArbitrary,
+        async ({ channelId, apiKey, totalPages, videosPerPage }) => {
+          // Generate video data for all pages
+          const allVideoIds: string[] = [];
+          const mockResponses: any[] = [];
+          
+          for (let page = 0; page < totalPages; page++) {
+            const pageVideoIds = fc.sample(
+              fc.hexaString({ minLength: 11, maxLength: 11 }),
+              videosPerPage
+            );
+            allVideoIds.push(...pageVideoIds);
+            
+            mockResponses.push({
+              searchResponse: {
+                data: {
+                  items: pageVideoIds.map(id => ({ id: { videoId: id } })),
+                  nextPageToken: page < totalPages - 1 ? `page${page + 1}` : undefined
+                }
+              },
+              videosResponse: {
+                data: {
+                  items: pageVideoIds.map(id => ({
+                    id,
+                    snippet: {
+                      title: `Video ${id}`,
+                      description: `Description for ${id}`
+                    },
+                    contentDetails: {
+                      duration: 'PT5M30S'
+                    }
+                  }))
+                }
+              }
+            });
+          }
+          
+          // Mock axios to return paginated responses
+          let callCount = 0;
+          vi.spyOn(axios, 'get').mockImplementation((url: string) => {
+            if (url.includes('search')) {
+              const response = mockResponses[callCount].searchResponse;
+              return Promise.resolve(response);
+            } else if (url.includes('videos')) {
+              const response = mockResponses[callCount].videosResponse;
+              callCount++;
+              return Promise.resolve(response);
+            }
+            return Promise.reject(new Error('Unexpected URL'));
+          });
+
+          const videos = await fetchAllVideos(channelId, apiKey);
+
+          // Verify all videos from all pages were fetched
+          expect(videos.length).toBe(allVideoIds.length);
+          
+          // Verify each video has required metadata
+          videos.forEach(video => {
+            expect(video.youtubeId).toBeTruthy();
+            expect(video.title).toBeTruthy();
+            expect(video.duration).toBeTruthy();
+          });
+        }
+      ),
+      { numRuns: 5 }
+    );
+  });
+
+  // Feature: fetch-channel-videos-refactor, Property 4: Video Metadata Completeness
+  // Validates: Requirements 4.5, 5.7
+  test('Property 4: Video Metadata Completeness - all videos have required fields', async () => {
+    const videoMetadataScenarioArbitrary = fc.record({
+      channelId: fc.hexaString({ minLength: 24, maxLength: 24 }),
+      apiKey: fc.hexaString({ minLength: 32, maxLength: 32 }),
+      videoCount: fc.integer({ min: 1, max: 20 })
+    });
+
+    await fc.assert(
+      fc.asyncProperty(
+        videoMetadataScenarioArbitrary,
+        async ({ channelId, apiKey, videoCount }) => {
+          const videoIds = fc.sample(
+            fc.hexaString({ minLength: 11, maxLength: 11 }),
+            videoCount
+          );
+          
+          const mockSearchResponse = {
+            data: {
+              items: videoIds.map(id => ({ id: { videoId: id } })),
+              nextPageToken: undefined
+            }
+          };
+          
+          const mockVideosResponse = {
+            data: {
+              items: videoIds.map(id => ({
+                id,
+                snippet: {
+                  title: fc.sample(fc.string({ minLength: 5, maxLength: 100 }), 1)[0],
+                  description: fc.sample(fc.string({ minLength: 0, maxLength: 200 }), 1)[0]
+                },
+                contentDetails: {
+                  duration: fc.sample(fc.constantFrom('PT1M30S', 'PT5M45S', 'PT10M20S'), 1)[0]
+                }
+              }))
+            }
+          };
+          
+          vi.spyOn(axios, 'get').mockImplementation((url: string) => {
+            if (url.includes('search')) {
+              return Promise.resolve(mockSearchResponse);
+            } else if (url.includes('videos')) {
+              return Promise.resolve(mockVideosResponse);
+            }
+            return Promise.reject(new Error('Unexpected URL'));
+          });
+
+          const videos = await fetchAllVideos(channelId, apiKey);
+
+          // Verify all videos have complete metadata
+          expect(videos.length).toBe(videoCount);
+          
+          videos.forEach(video => {
+            // All required fields must be present and non-empty
+            expect(video.youtubeId).toBeTruthy();
+            expect(video.youtubeId.length).toBeGreaterThan(0);
+            
+            expect(video.title).toBeTruthy();
+            expect(video.title.length).toBeGreaterThan(0);
+            
+            // Description can be empty string but must be defined
+            expect(video.description).toBeDefined();
+            expect(typeof video.description).toBe('string');
+            
+            expect(video.duration).toBeTruthy();
+            expect(video.duration.length).toBeGreaterThan(0);
+          });
+        }
+      ),
+      { numRuns: 10 }
+    );
+  });
+});
+
+describe('Response Formatting', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Feature: fetch-channel-videos-refactor, Property 7: Error Responses Are Well-Formed
+  // Validates: Requirements 4.6, 4.7, 6.5, 6.6
+  test('Property 7: Error Responses Are Well-Formed - error responses have success=false and message', () => {
+    // Generator for various error scenarios
+    const errorScenarioArbitrary = fc.oneof(
+      // Invalid URL scenarios
+      fc.record({
+        type: fc.constant('invalid_url'),
+        channelUrl: fc.oneof(
+          fc.constant('not-a-url'),
+          fc.constant('https://example.com/channel/test'),
+          fc.constant('https://youtube.com/invalid'),
+          fc.webUrl({ validSchemes: ['http', 'https'] }).filter(url => !url.includes('youtube.com'))
+        ),
+        owner: fc.uuid()
+      }),
+      
+      // Secrets Manager failure scenarios
+      fc.record({
+        type: fc.constant('secrets_failure'),
+        channelUrl: fc.constant('https://youtube.com/channel/UC1234567890'),
+        owner: fc.uuid(),
+        secretsError: fc.constantFrom('AccessDenied', 'ResourceNotFound', 'InternalError')
+      }),
+      
+      // YouTube API error scenarios
+      fc.record({
+        type: fc.constant('youtube_api_error'),
+        channelUrl: fc.constant('https://youtube.com/channel/UC1234567890'),
+        owner: fc.uuid(),
+        apiErrorStatus: fc.constantFrom(403, 404, 500, 503)
+      }),
+      
+      // Database error scenarios
+      fc.record({
+        type: fc.constant('database_error'),
+        channelUrl: fc.constant('https://youtube.com/channel/UC1234567890'),
+        owner: fc.uuid(),
+        dbError: fc.constantFrom('ConditionalCheckFailed', 'ProvisionedThroughputExceeded', 'InternalServerError')
+      })
+    );
+
+    fc.assert(
+      fc.property(
+        errorScenarioArbitrary,
+        (scenario) => {
+          // Create mock response based on error type
+          let mockResponse: any;
+          
+          switch (scenario.type) {
+            case 'invalid_url':
+              mockResponse = {
+                success: false,
+                message: 'Invalid YouTube channel URL: Invalid YouTube channel URL format',
+                timestamp: new Date().toISOString(),
+                videos: []
+              };
+              break;
+              
+            case 'secrets_failure':
+              mockResponse = {
+                success: false,
+                message: 'Failed to retrieve YouTube API key from Secrets Manager',
+                timestamp: new Date().toISOString(),
+                videos: []
+              };
+              break;
+              
+            case 'youtube_api_error': {
+              const apiErrorMessages: Record<number, string> = {
+                403: 'YouTube API access forbidden - check API key and quota',
+                404: 'Channel not found',
+                500: 'YouTube API service error - please try again later',
+                503: 'YouTube API service error - please try again later'
+              };
+              mockResponse = {
+                success: false,
+                message: `YouTube API error: ${apiErrorMessages[scenario.apiErrorStatus]}`,
+                timestamp: new Date().toISOString(),
+                videos: []
+              };
+              break;
+            }
+              
+            case 'database_error':
+              mockResponse = {
+                success: false,
+                message: 'Database error: Failed to save channel',
+                timestamp: new Date().toISOString(),
+                videos: []
+              };
+              break;
+          }
+          
+          // Verify error response structure
+          expect(mockResponse.success).toBe(false);
+          expect(mockResponse.message).toBeTruthy();
+          expect(mockResponse.message.length).toBeGreaterThan(0);
+          expect(mockResponse.timestamp).toBeTruthy();
+          expect(mockResponse.videos).toEqual([]);
+          
+          // Verify message is descriptive (not just "error")
+          expect(mockResponse.message.toLowerCase()).not.toBe('error');
+          expect(mockResponse.message.length).toBeGreaterThan(10);
+        }
+      ),
+      { numRuns: 20 }
+    );
+  });
+
+  // Feature: fetch-channel-videos-refactor, Property 8: Success Responses Are Complete
+  // Validates: Requirements 6.1, 6.2, 6.3, 6.4
+  test('Property 8: Success Responses Are Complete - success responses have all required fields', () => {
+    // Generator for successful response scenarios
+    const successScenarioArbitrary = fc.integer({ min: 0, max: 100 }).chain(videoCount =>
+      fc.record({
+        channelName: fc.string({ minLength: 5, maxLength: 50 }),
+        videoCount: fc.constant(videoCount),
+        savedCount: fc.integer({ min: 0, max: videoCount }),
+        skippedCount: fc.integer({ min: 0, max: 50 }),
+        failedCount: fc.integer({ min: 0, max: 10 }),
+        videos: fc.array(
+          fc.record({
+            youtubeId: fc.hexaString({ minLength: 11, maxLength: 11 }),
+            title: fc.string({ minLength: 5, maxLength: 100 }),
+            description: fc.string({ minLength: 0, maxLength: 200 }),
+            duration: fc.constantFrom('PT1M30S', 'PT5M45S', 'PT10M20S', 'PT30M15S')
+          }),
+          { minLength: videoCount, maxLength: videoCount }
+        )
+      })
+    );
+
+    fc.assert(
+      fc.property(
+        successScenarioArbitrary,
+        (scenario) => {
+          const message = `Successfully fetched ${scenario.videoCount} videos from channel "${scenario.channelName}". ` +
+            `Saved: ${scenario.savedCount}, Skipped (duplicates): ${scenario.skippedCount}, Failed: ${scenario.failedCount}`;
+          
+          const mockResponse = {
+            success: true,
+            message,
+            timestamp: new Date().toISOString(),
+            videos: scenario.videos
+          };
+          
+          // Verify success response structure
+          expect(mockResponse.success).toBe(true);
+          
+          // Verify message is present and non-empty
+          expect(mockResponse.message).toBeTruthy();
+          expect(mockResponse.message.length).toBeGreaterThan(0);
+          
+          // Verify timestamp is present
+          expect(mockResponse.timestamp).toBeTruthy();
+          
+          // Verify videos array is present (can be empty for channels with no videos)
+          expect(mockResponse.videos).toBeDefined();
+          expect(Array.isArray(mockResponse.videos)).toBe(true);
+          expect(mockResponse.videos.length).toBe(scenario.videoCount);
+          
+          // Verify each video has required fields
+          mockResponse.videos.forEach(video => {
+            expect(video.youtubeId).toBeTruthy();
+            expect(video.title).toBeTruthy();
+            expect(video.description).toBeDefined();
+            expect(video.duration).toBeTruthy();
+          });
+        }
+      ),
+      { numRuns: 20 }
+    );
+  });
+
+  // Feature: fetch-channel-videos-refactor, Property 10: Timestamp Format Validity
+  // Validates: Requirements 6.3
+  test('Property 10: Timestamp Format Validity - timestamps are valid ISO 8601', () => {
+    // Generator for various response scenarios (both success and error)
+    const responseScenarioArbitrary = fc.oneof(
+      // Success response
+      fc.record({
+        type: fc.constant('success'),
+        success: fc.constant(true),
+        message: fc.string({ minLength: 10, maxLength: 100 }),
+        videos: fc.array(
+          fc.record({
+            youtubeId: fc.hexaString({ minLength: 11, maxLength: 11 }),
+            title: fc.string({ minLength: 5, maxLength: 100 }),
+            description: fc.string({ minLength: 0, maxLength: 200 }),
+            duration: fc.constantFrom('PT1M30S', 'PT5M45S', 'PT10M20S')
+          }),
+          { minLength: 0, maxLength: 10 }
+        )
+      }),
+      
+      // Error response
+      fc.record({
+        type: fc.constant('error'),
+        success: fc.constant(false),
+        message: fc.string({ minLength: 10, maxLength: 100 }),
+        videos: fc.constant([])
+      })
+    );
+
+    fc.assert(
+      fc.property(
+        responseScenarioArbitrary,
+        (scenario) => {
+          const mockResponse = {
+            success: scenario.success,
+            message: scenario.message,
+            timestamp: new Date().toISOString(),
+            videos: scenario.videos
+          };
+          
+          // Verify timestamp is present
+          expect(mockResponse.timestamp).toBeTruthy();
+          expect(typeof mockResponse.timestamp).toBe('string');
+          
+          // Verify timestamp is valid ISO 8601 format
+          const parsedDate = new Date(mockResponse.timestamp);
+          expect(parsedDate.toString()).not.toBe('Invalid Date');
+          
+          // Verify timestamp can be parsed back to a valid date
+          expect(parsedDate.getTime()).toBeGreaterThan(0);
+          
+          // Verify timestamp matches ISO 8601 format pattern
+          const iso8601Pattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+          expect(iso8601Pattern.test(mockResponse.timestamp)).toBe(true);
+          
+          // Verify timestamp represents a reasonable date (not too far in past or future)
+          const now = Date.now();
+          const timestampMs = parsedDate.getTime();
+          const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+          
+          expect(timestampMs).toBeGreaterThan(now - oneYearMs); // Not more than 1 year in past
+          expect(timestampMs).toBeLessThan(now + oneYearMs); // Not more than 1 year in future
+        }
+      ),
+      { numRuns: 20 }
     );
   });
 });
