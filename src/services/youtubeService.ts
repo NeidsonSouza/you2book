@@ -28,7 +28,7 @@ export async function fetchVideosFromYouTube(channelUrl: string): Promise<VideoM
     return [];
   }
 
-  return result.data.videos;
+  return result.data.videos.filter((v): v is VideoMetadata => v !== null && v !== undefined);
 }
 
 export async function saveVideosToDatabase(videos: VideoMetadata[], channelId: string): Promise<void> {

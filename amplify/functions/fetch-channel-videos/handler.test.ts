@@ -824,9 +824,10 @@ describe('Response Formatting', () => {
                 500: 'YouTube API service error - please try again later',
                 503: 'YouTube API service error - please try again later'
               };
+              const status = 'apiErrorStatus' in scenario ? scenario.apiErrorStatus : 500;
               mockResponse = {
                 success: false,
-                message: `YouTube API error: ${apiErrorMessages[scenario.apiErrorStatus]}`,
+                message: `YouTube API error: ${apiErrorMessages[status]}`,
                 timestamp: new Date().toISOString(),
                 videos: []
               };
