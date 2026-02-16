@@ -411,35 +411,156 @@ async function saveVideos(
   return { saved: savedCount, skipped: skippedCount, failed: failedCount }
 }
 
-export const handler: Schema["sayHello"]["functionHandler"] = async (event) => {
-  const { name } = event.arguments
+/**
+ * Main handler function for fetching channel videos
+ * Orchestrates the entire flow: API key retrieval → URL parsing → channel fetch → video fetch → database operations
+ * @param event The Lambda event containing channelUrl and user identity
+ * @returns Response object with success status, message, timestamp, and videos
+ */
+export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (event) => {
+  // Generate ISO 8601 timestamp at the start
+  const timestamp = new Date().toISOString()
   
-  // Return fake YouTube videos for testing
-  const fakeVideos = [
-    {
-      youtubeId: "dQw4w9WgXcQ",
-      title: "Sample Video 1 - Introduction",
-      description: "This is a sample video description for testing purposes",
-      duration: "PT3M42S"
-    },
-    {
-      youtubeId: "jNQXAC9IVRw",
-      title: "Sample Video 2 - Tutorial",
-      description: "Another sample video with a longer description to test the display",
-      duration: "PT10M15S"
-    },
-    {
-      youtubeId: "9bZkp7q19f0",
-      title: "Sample Video 3 - Advanced Topics",
-      description: "Final sample video for the channel",
-      duration: "PT5M30S"
+  try {
+    // Extract arguments and user identity
+    const { channelUrl } = event.arguments
+    const owner = event.identity && 'sub' in event.identity ? event.identity.sub : undefined
+    
+    // Validate user authentication
+    if (!owner) {
+      console.error("Authentication error: User identity not found")
+      return {
+        success: false,
+        message: "User identity not found - authentication required",
+        timestamp,
+        videos: []
+      }
     }
-  ];
-  
-  return {
-    message: `Fetched videos for channel: ${name}`,
-    timestamp: new Date().toISOString(),
-    success: true,
-    videos: fakeVideos
+    
+    console.log(`Processing channel URL: ${channelUrl} for user: ${owner}`)
+    
+    // Step 1: Get YouTube API key from Secrets Manager
+    let apiKey: string
+    try {
+      apiKey = await getYouTubeApiKey()
+    } catch (error) {
+      console.error("Secrets Manager error:", error)
+      return {
+        success: false,
+        message: "Failed to retrieve YouTube API key from Secrets Manager",
+        timestamp: new Date().toISOString(),
+        videos: []
+      }
+    }
+    
+    // Step 2: Parse URL to extract channel ID
+    let channelId: string
+    try {
+      channelId = extractChannelId(channelUrl)
+      console.log(`Extracted channel ID: ${channelId}`)
+    } catch (error) {
+      console.error("URL parsing error:", error)
+      const errorMessage = error instanceof Error ? error.message : "Invalid URL format"
+      return {
+        success: false,
+        message: `Invalid YouTube channel URL: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        videos: []
+      }
+    }
+    
+    // Step 3: Fetch channel metadata
+    let channelName: string
+    try {
+      channelName = await fetchChannelMetadata(channelId, apiKey)
+      console.log(`Fetched channel metadata: ${channelName}`)
+    } catch (error) {
+      console.error("Channel metadata fetch error:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch channel metadata"
+      return {
+        success: false,
+        message: `YouTube API error: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        videos: []
+      }
+    }
+    
+    // Step 4: Fetch all videos from the channel
+    let videos: YouTubeVideo[]
+    try {
+      videos = await fetchAllVideos(channelId, apiKey)
+      console.log(`Fetched ${videos.length} videos from channel`)
+    } catch (error) {
+      console.error("Video fetch error:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch videos"
+      return {
+        success: false,
+        message: `YouTube API error: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        videos: []
+      }
+    }
+    
+    // Step 5: Upsert channel record in database
+    let dbChannelId: string
+    try {
+      dbChannelId = await upsertChannel(
+        {
+          name: channelName,
+          url: channelUrl,
+          youtubeChannelId: channelId
+        },
+        owner
+      )
+      console.log(`Channel upserted with ID: ${dbChannelId}`)
+    } catch (error) {
+      console.error("Channel upsert error:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to save channel"
+      return {
+        success: false,
+        message: `Database error: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        videos: []
+      }
+    }
+    
+    // Step 6: Save videos to database with deduplication
+    let saveResults: { saved: number; skipped: number; failed: number }
+    try {
+      saveResults = await saveVideos(videos, dbChannelId, owner)
+      console.log(`Video save results: ${JSON.stringify(saveResults)}`)
+    } catch (error) {
+      // This shouldn't happen as saveVideos handles errors internally
+      console.error("Unexpected error in saveVideos:", error)
+      saveResults = { saved: 0, skipped: 0, failed: videos.length }
+    }
+    
+    // Build success response with descriptive message
+    const message = `Successfully fetched ${videos.length} videos from channel "${channelName}". ` +
+      `Saved: ${saveResults.saved}, Skipped (duplicates): ${saveResults.skipped}, Failed: ${saveResults.failed}`
+    
+    return {
+      success: true,
+      message,
+      timestamp: new Date().toISOString(),
+      videos: videos.map(v => ({
+        youtubeId: v.youtubeId,
+        title: v.title,
+        description: v.description,
+        duration: v.duration
+      }))
+    }
+  } catch (error) {
+    // Catch-all for any unexpected errors
+    console.error("Unexpected handler error:", error)
+    
+    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred"
+    
+    return {
+      success: false,
+      message: `Failed to fetch channel videos: ${errorMessage}`,
+      timestamp: new Date().toISOString(),
+      videos: []
+    }
   }
 }
