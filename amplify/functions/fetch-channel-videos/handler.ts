@@ -2,36 +2,12 @@ import type { Schema } from "../../data/resource"
 import axios from "axios"
 import { Amplify } from "aws-amplify"
 import { generateClient } from "aws-amplify/data"
+import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime'
 import { env } from "$amplify/env/fetch-channel-videos"
 
-// Configure Amplify for Lambda environment
-Amplify.configure(
-  {
-    API: {
-      GraphQL: {
-        endpoint: (env as any).AMPLIFY_DATA_GRAPHQL_ENDPOINT,
-        region: env.AWS_REGION,
-        defaultAuthMode: "iam"
-      }
-    }
-  },
-  {
-    Auth: {
-      credentialsProvider: {
-        getCredentialsAndIdentityId: async () => ({
-          credentials: {
-            accessKeyId: env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-            sessionToken: env.AWS_SESSION_TOKEN,
-          },
-        }),
-        clearCredentialsAndIdentityId: () => {
-          /* noop */
-        },
-      },
-    },
-  }
-)
+// Configure Amplify for Lambda environment using the official helper
+const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env)
+Amplify.configure(resourceConfig, libraryOptions)
 
 // Create the Amplify Data client
 const client = generateClient<Schema>()
@@ -112,58 +88,69 @@ function extractChannelId(url: string): string {
 async function fetchChannelMetadata(channelId: string, apiKey: string): Promise<string> {
   try {
     const baseUrl = 'https://www.googleapis.com/youtube/v3/channels'
-    
-    // If channelId starts with @, it's a handle - need to resolve it first
-    if (channelId.startsWith('@')) {
-      const searchUrl = 'https://www.googleapis.com/youtube/v3/search'
-      const searchParams = {
+    let params: Record<string, string>
+
+    // Determine how to look up the channel based on the identifier format
+    if (channelId.startsWith('UC')) {
+      // It's already a channel ID
+      params = {
         part: 'snippet',
-        q: channelId,
-        type: 'channel',
-        maxResults: 1,
+        id: channelId,
         key: apiKey
       }
-      
-      const searchResponse = await axios.get(searchUrl, { params: searchParams })
-      
-      if (!searchResponse.data.items || searchResponse.data.items.length === 0) {
-        throw new Error(`Channel not found for handle: ${channelId}`)
+    } else if (channelId.startsWith('@')) {
+      // It's a handle - use forHandle parameter (without the @ symbol)
+      params = {
+        part: 'snippet',
+        forHandle: channelId.substring(1),
+        key: apiKey
       }
-      
-      // Get the actual channel ID from search results
-      channelId = searchResponse.data.items[0].snippet.channelId
+    } else {
+      // It's a custom URL or username - use forUsername parameter
+      params = {
+        part: 'snippet',
+        forUsername: channelId,
+        key: apiKey
+      }
     }
-    
-    // Fetch channel metadata using the channel ID
-    const params = {
-      part: 'snippet',
-      id: channelId,
-      key: apiKey
-    }
-    
+
+    console.log('Fetching channel metadata with params:', params)
     const response = await axios.get(baseUrl, { params })
-    
+
     if (!response.data.items || response.data.items.length === 0) {
       throw new Error(`Channel not found: ${channelId}`)
     }
-    
+
     const channelName = response.data.items[0].snippet.title
     return channelName
   } catch (error) {
     if (axios.isAxiosError(error)) {
       const status = error.response?.status
-      
+      const errorData = error.response?.data
+
+      console.error('YouTube API Error in fetchChannelMetadata:', {
+        status,
+        statusText: error.response?.statusText,
+        data: errorData,
+        url: error.config?.url,
+        params: error.config?.params,
+        channelId
+      })
+
       if (status === 404) {
         throw new Error(`Channel not found: ${channelId}`)
       } else if (status === 403) {
         throw new Error('YouTube API access forbidden - check API key and quota')
+      } else if (status === 400) {
+        const errorMessage = errorData?.error?.message || 'Invalid request'
+        throw new Error(`Bad request for channel ${channelId}: ${errorMessage}`)
       } else if (status && status >= 500) {
         throw new Error('YouTube API service error - please try again later')
       }
-      
+
       throw new Error(`YouTube API error: ${error.message}`)
     }
-    
+
     throw error
   }
 }
@@ -186,60 +173,72 @@ async function fetchAllVideos(channelId: string, apiKey: string): Promise<YouTub
   try {
     const allVideos: YouTubeVideo[] = []
     let nextPageToken: string | undefined = undefined
-    
-    // If channelId starts with @, resolve it to actual channel ID first
+
+    // Resolve channelId to actual channel ID if it's not already one
     let actualChannelId = channelId
-    if (channelId.startsWith('@')) {
-      const searchUrl = 'https://www.googleapis.com/youtube/v3/search'
-      const searchParams = {
-        part: 'snippet',
-        q: channelId,
-        type: 'channel',
-        maxResults: 1,
-        key: apiKey
+
+    // Channel IDs start with "UC" - if it doesn't, we need to resolve it
+    if (!channelId.startsWith('UC')) {
+      const channelsUrl = 'https://www.googleapis.com/youtube/v3/channels'
+      let channelParams: Record<string, string>
+
+      if (channelId.startsWith('@')) {
+        // It's a handle - use forHandle parameter (without the @ symbol)
+        channelParams = {
+          part: 'id',
+          forHandle: channelId.substring(1),
+          key: apiKey
+        }
+      } else {
+        // It's a custom URL or username - use forUsername parameter
+        channelParams = {
+          part: 'id',
+          forUsername: channelId,
+          key: apiKey
+        }
       }
-      
-      const searchResponse = await axios.get(searchUrl, { params: searchParams })
-      
-      if (!searchResponse.data.items || searchResponse.data.items.length === 0) {
-        throw new Error(`Channel not found for handle: ${channelId}`)
+
+      const channelResponse = await axios.get(channelsUrl, { params: channelParams })
+
+      if (!channelResponse.data.items || channelResponse.data.items.length === 0) {
+        throw new Error(`Channel not found for identifier: ${channelId}`)
       }
-      
-      actualChannelId = searchResponse.data.items[0].snippet.channelId
+
+      actualChannelId = channelResponse.data.items[0].id
     }
-    
+
     // Paginate through all videos
     do {
       // Step 1: Get video IDs from search.list
       const searchUrl = 'https://www.googleapis.com/youtube/v3/search'
       const searchParams: Record<string, string | number> = {
-        part: 'id',
+        part: 'snippet',
         channelId: actualChannelId,
         type: 'video',
         maxResults: 50,
         order: 'date',
         key: apiKey
       }
-      
+
       if (nextPageToken) {
         searchParams.pageToken = nextPageToken
       }
-      
+
       const searchResponse = await axios.get(searchUrl, { params: searchParams })
-      
+
       if (!searchResponse.data.items || searchResponse.data.items.length === 0) {
         break // No more videos
       }
-      
+
       // Extract video IDs
       const videoIds = searchResponse.data.items
         .map((item: { id: { videoId: string } }) => item.id.videoId)
         .filter((id: string) => id) // Filter out any undefined IDs
-      
+
       if (videoIds.length === 0) {
         break
       }
-      
+
       // Step 2: Get video details from videos.list
       const videosUrl = 'https://www.googleapis.com/youtube/v3/videos'
       const videosParams = {
@@ -247,9 +246,9 @@ async function fetchAllVideos(channelId: string, apiKey: string): Promise<YouTub
         id: videoIds.join(','),
         key: apiKey
       }
-      
+
       const videosResponse = await axios.get(videosUrl, { params: videosParams })
-      
+
       if (videosResponse.data.items) {
         for (const item of videosResponse.data.items) {
           allVideos.push({
@@ -260,28 +259,30 @@ async function fetchAllVideos(channelId: string, apiKey: string): Promise<YouTub
           })
         }
       }
-      
+
       // Get next page token
       nextPageToken = searchResponse.data.nextPageToken
-      
+
     } while (nextPageToken)
-    
+
     return allVideos
   } catch (error) {
     if (axios.isAxiosError(error)) {
       const status = error.response?.status
-      
+
       if (status === 404) {
         throw new Error(`Channel not found: ${channelId}`)
       } else if (status === 403) {
         throw new Error('YouTube API access forbidden - check API key and quota')
+      } else if (status === 400) {
+        throw new Error(`Invalid request parameters for channel: ${channelId}`)
       } else if (status && status >= 500) {
         throw new Error('YouTube API service error - please try again later')
       }
-      
+
       throw new Error(`YouTube API error: ${error.message}`)
     }
-    
+
     throw error
   }
 }
@@ -299,6 +300,7 @@ async function upsertChannel(
 ): Promise<string> {
   try {
     // Query for existing channel by youtubeChannelId
+    console.log('Querying for existing channel:', { youtubeChannelId: channelData.youtubeChannelId, owner })
     const existingChannels = await client.models.Channel.list({
       filter: { 
         youtubeChannelId: { eq: channelData.youtubeChannelId },
@@ -306,24 +308,40 @@ async function upsertChannel(
       }
     })
     
+    if (existingChannels.errors) {
+      console.error('Channel list query errors:', JSON.stringify(existingChannels.errors))
+      throw new Error('Failed to query channels: ' + existingChannels.errors.map(e => e.message).join(', '))
+    }
+    
     if (existingChannels.data && existingChannels.data.length > 0) {
       // Update existing channel name
       const channelId = existingChannels.data[0].id
-      await client.models.Channel.update({
+      const updateResult = await client.models.Channel.update({
         id: channelId,
         name: channelData.name,
       })
+      
+      if (updateResult.errors) {
+        console.error('Channel update errors:', JSON.stringify(updateResult.errors))
+        throw new Error('Failed to update channel: ' + updateResult.errors.map(e => e.message).join(', '))
+      }
       
       console.log(`Updated existing channel: ${channelId}`)
       return channelId
     } else {
       // Create new channel
+      console.log('Creating new channel:', { ...channelData, owner })
       const result = await client.models.Channel.create({
         name: channelData.name,
         url: channelData.url,
         youtubeChannelId: channelData.youtubeChannelId,
         owner: owner,
       })
+      
+      if (result.errors) {
+        console.error('Channel create errors:', JSON.stringify(result.errors))
+        throw new Error('Failed to create channel: ' + result.errors.map(e => e.message).join(', '))
+      }
       
       if (!result.data) {
         throw new Error('Failed to create channel - no data returned')
@@ -333,8 +351,9 @@ async function upsertChannel(
       return result.data.id
     }
   } catch (error) {
-    console.error('Failed to upsert channel:', error)
-    throw new Error(`Database error: Failed to save channel`)
+    const errorMessage = error instanceof Error ? error.message : JSON.stringify(error)
+    console.error('Failed to upsert channel:', errorMessage)
+    throw new Error(`Database error: ${errorMessage}`)
   }
 }
 
@@ -477,10 +496,22 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     // Step 4: Fetch all videos from the channel
     let videos: YouTubeVideo[]
     try {
+      console.log(`About to fetch videos for channelId: ${channelId}`)
       videos = await fetchAllVideos(channelId, apiKey)
       console.log(`Fetched ${videos.length} videos from channel`)
     } catch (error) {
       console.error("Video fetch error:", error)
+      if (axios.isAxiosError(error)) {
+        console.error("Axios error details:", {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          config: {
+            url: error.config?.url,
+            params: error.config?.params
+          }
+        })
+      }
       const errorMessage = error instanceof Error ? error.message : "Failed to fetch videos"
       return {
         success: false,

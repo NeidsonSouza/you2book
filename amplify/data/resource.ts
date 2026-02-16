@@ -89,7 +89,7 @@ const schema = a.schema({
     .authorization(allow => [allow.authenticated()])
     .handler(a.handler.function(fetchChannelVideos)),
 
-})
+}).authorization(allow => [allow.resource(fetchChannelVideos)])
 
 export type Schema = ClientSchema<typeof schema>;
 

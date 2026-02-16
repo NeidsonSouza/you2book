@@ -2,11 +2,6 @@ import { useEffect, useState } from "react";
 import type { Schema } from "../amplify/data/resource";
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  fetchVideosFromYouTube, 
-  saveVideosToDatabase, 
-  extractChannelNameFromUrl 
-} from './services/youtubeService';
 import { deleteChannel } from './services/channelService';
 import { client } from './lib/amplifyClient';
 
@@ -24,43 +19,44 @@ function App() {
     });
   }, []);
 
-  function createChannel(): void {
+  async function createChannel(): Promise<void> {
     if (newChannelUrl.trim()) {
       setIsCreatingChannel(true);
       setFetchError(null);
       
-      // Extract channel name from URL or use a default
-      const channelName = extractChannelNameFromUrl(newChannelUrl.trim()) || 'New Channel';
       const channelUrl = newChannelUrl.trim();
       
-      client.models.Channel.create({ 
-        name: channelName,
-        url: channelUrl 
-      }).then(async (result) => {
-        if (result.data && result.data.id) {
-          // Fetch videos using the custom query
-          try {
-            const videos = await fetchVideosFromYouTube(channelUrl);
-            
-            if (videos.length > 0) {
-              // Save videos to DynamoDB using Amplify Data client
-              await saveVideosToDatabase(videos, result.data.id);
-              console.log(`Successfully saved ${videos.length} videos`);
-            } else {
-              console.log('No videos found for this channel');
-            }
-          } catch (error) {
-            console.error('Error fetching or saving videos:', error);
-            setFetchError('Failed to fetch videos: ' + (error as Error).message);
-          }
+      try {
+        // Call the Lambda function which handles everything:
+        // - Extracts channel ID from URL
+        // - Fetches channel metadata from YouTube
+        // - Creates/updates channel in database
+        // - Fetches all videos from YouTube
+        // - Saves videos to database
+        const result = await client.queries.fetchChannelVideos({
+          channelUrl: channelUrl,
+        });
+
+        if (result.errors) {
+          throw new Error(result.errors.map(e => e.message).join(', '));
         }
-        setIsCreatingChannel(false);
+
+        if (!result.data) {
+          throw new Error('No data returned from query');
+        }
+
+        if (!result.data.success) {
+          throw new Error(result.data.message);
+        }
+
+        console.log(result.data.message);
         setNewChannelUrl("");
-      }).catch((error) => {
-        console.error('Error creating channel:', error);
-        setFetchError('Failed to create channel: ' + (error as Error).message);
+      } catch (error) {
+        console.error('Error adding channel:', error);
+        setFetchError('Failed to add channel: ' + (error as Error).message);
+      } finally {
         setIsCreatingChannel(false);
-      });
+      }
     }
   }
 
