@@ -1,5 +1,4 @@
 import type { Schema } from "../../data/resource"
-import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager"
 import axios from "axios"
 import { Amplify } from "aws-amplify"
 import { generateClient } from "aws-amplify/data"
@@ -38,28 +37,18 @@ Amplify.configure(
 const client = generateClient<Schema>()
 
 /**
- * Retrieves the YouTube API key from AWS Secrets Manager
+ * Retrieves the YouTube API key from environment variables
  * @returns The YouTube API key
- * @throws Error if the API key cannot be retrieved
+ * @throws Error if the API key is not configured
  */
-async function getYouTubeApiKey(): Promise<string> {
-  try {
-    const client = new SecretsManagerClient({})
-    const command = new GetSecretValueCommand({
-      SecretId: process.env.YOUTUBE_API_SECRET_NAME || "youtube-api-key",
-    })
-    
-    const response = await client.send(command)
-    
-    if (!response.SecretString) {
-      throw new Error("API key not found in Secrets Manager")
-    }
-    
-    return response.SecretString
-  } catch (error) {
-    console.error("Failed to retrieve YouTube API key from Secrets Manager:", error)
-    throw new Error("Failed to retrieve YouTube API key")
+function getYouTubeApiKey(): string {
+  const apiKey = env.YOUTUBE_API_KEY
+  
+  if (!apiKey) {
+    throw new Error("YouTube API key not configured")
   }
+  
+  return apiKey
 }
 
 /**
@@ -439,15 +428,15 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     
     console.log(`Processing channel URL: ${channelUrl} for user: ${owner}`)
     
-    // Step 1: Get YouTube API key from Secrets Manager
+    // Step 1: Get YouTube API key from environment
     let apiKey: string
     try {
-      apiKey = await getYouTubeApiKey()
+      apiKey = getYouTubeApiKey()
     } catch (error) {
-      console.error("Secrets Manager error:", error)
+      console.error("API key configuration error:", error)
       return {
         success: false,
-        message: "Failed to retrieve YouTube API key from Secrets Manager",
+        message: "YouTube API key not configured. Please set the YOUTUBE_API_KEY secret.",
         timestamp: new Date().toISOString(),
         videos: []
       }
