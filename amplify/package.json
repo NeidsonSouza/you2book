@@ -2,8 +2,9 @@
   "type": "module",
   "dependencies": {
     "@aws-amplify/backend": "^1.0.0",
-    "googleapis": "^144.0.0",
-    "@aws-sdk/client-ssm": "^3.0.0"
+    "@aws-cdk/aws-bedrock-agentcore-alpha": "^2.238.0-alpha.0",
+    "@aws-sdk/client-ssm": "^3.0.0",
+    "googleapis": "^144.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
