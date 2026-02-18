@@ -8,6 +8,8 @@ import { auth } from './auth/resource';
 import { data } from './data/resource';
 import { fetchChannelVideos } from './functions/fetch-channel-videos/resource';
 import { execSync } from 'child_process';
+import { createHash } from 'crypto';
+import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -24,15 +26,37 @@ const backend = defineBackend({
 const userPool = backend.auth.resources.userPool;
 const userPoolClient = backend.auth.resources.userPoolClient;
 
-// Run build script at synth time
-const agentcoreBuildScript = path.resolve(__dirname, '..', 'agentcore', 'build.sh');
-execSync(`bash ${agentcoreBuildScript}`, { stdio: 'inherit' });
+// Only run build if agentcore source files have changed
+const agentcoreSrcDir = path.resolve(__dirname, '..', 'agentcore', 'src');
+const agentcoreDistDir = path.resolve(__dirname, '..', 'agentcore', 'dist');
+const buildHashPath = path.join(agentcoreDistDir, '.build_hash');
+const deploymentZipPath = path.join(agentcoreDistDir, 'deployment_package.zip');
+
+const sourceFiles = ['main.py', 'requirements.txt'];
+const hashContent = sourceFiles
+  .map((f) => fs.readFileSync(path.join(agentcoreSrcDir, f)))
+  .reduce((hash, buf) => hash.update(buf), createHash('sha256'))
+  .digest('hex');
+
+const previousHash = fs.existsSync(buildHashPath)
+  ? fs.readFileSync(buildHashPath, 'utf-8').trim()
+  : '';
+
+if (hashContent !== previousHash || !fs.existsSync(deploymentZipPath)) {
+  const agentcoreBuildScript = path.resolve(__dirname, '..', 'agentcore', 'build.sh');
+  execSync(`bash ${agentcoreBuildScript}`, { stdio: 'inherit' });
+  fs.writeFileSync(buildHashPath, hashContent);
+} else {
+  console.log('agentcore: source unchanged, skipping build');
+}
 
 const customResourceStack = backend.createStack('AgentcoreBucketStack');
 const bucket = new s3.Bucket(customResourceStack, 'AgentcoreBucket', {
   encryption: s3.BucketEncryption.S3_MANAGED,
   bucketKeyEnabled: true,
   objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
+  autoDeleteObjects: true,
+  removalPolicy: cdk.RemovalPolicy.DESTROY,
 });
 
 // Deploy agentcore package to S3
@@ -45,7 +69,7 @@ new s3deploy.BucketDeployment(customResourceStack, 'AgentcoreDeployment', {
 
 // Create AgentCore Runtime construct
 const runtime = new agentcore.Runtime(customResourceStack, 'AgentcoreRuntime', {
-  runtimeName: 'you2book-http-server',
+  runtimeName: 'you2book_http_server',
   agentRuntimeArtifact: agentcore.AgentRuntimeArtifact.fromS3(
     { bucketName: bucket.bucketName, objectKey: 'main/deployment_package.zip' },
     agentcore.AgentCoreRuntime.PYTHON_3_12,
