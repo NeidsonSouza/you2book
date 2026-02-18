@@ -61,7 +61,7 @@ const bucket = new s3.Bucket(customResourceStack, 'AgentcoreBucket', {
 
 // Deploy agentcore package to S3
 const agentcoreDistPath = path.resolve(__dirname, '..', 'agentcore', 'dist');
-new s3deploy.BucketDeployment(customResourceStack, 'AgentcoreDeployment', {
+const deployment = new s3deploy.BucketDeployment(customResourceStack, 'AgentcoreDeployment', {
   sources: [s3deploy.Source.asset(agentcoreDistPath)],
   destinationBucket: bucket,
   destinationKeyPrefix: 'main',
@@ -83,6 +83,33 @@ const runtime = new agentcore.Runtime(customResourceStack, 'AgentcoreRuntime', {
   networkConfiguration: agentcore.RuntimeNetworkConfiguration.usingPublicNetwork(),
   description: 'You2Book HTTP server runtime',
 });
+
+// Ensure the S3 deployment completes before the Runtime is created
+// Add dependency at both construct tree and CFN level for reliability
+runtime.node.addDependency(deployment);
+
+// Also wire up CFN-level DependsOn explicitly
+const allRuntimeChildren = runtime.node.findAll();
+const allDeploymentChildren = deployment.node.findAll();
+
+const runtimeCfnResource = allRuntimeChildren.find(
+  (c): c is cdk.CfnResource => c instanceof cdk.CfnResource && c.cfnResourceType === 'AWS::BedrockAgentCore::Runtime'
+);
+const deploymentCfnResource = allDeploymentChildren.find(
+  (c): c is cdk.CfnResource => c instanceof cdk.CfnResource && c.cfnResourceType === 'Custom::CDKBucketDeployment'
+);
+
+if (runtimeCfnResource && deploymentCfnResource) {
+  runtimeCfnResource.addDependency(deploymentCfnResource);
+} else {
+  console.warn('agentcore: Could not wire CFN dependency.',
+    'Runtime CFN found:', !!runtimeCfnResource,
+    'Deployment CFN found:', !!deploymentCfnResource
+  );
+  // Log all construct types for debugging
+  console.warn('Runtime children:', allRuntimeChildren.map(c => c.node.id).join(', '));
+  console.warn('Deployment children:', allDeploymentChildren.map(c => c.node.id).join(', '));
+}
 
 // Add minimal IAM permissions to the execution role
 runtime.addToRolePolicy(new iam.PolicyStatement({
