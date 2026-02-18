@@ -59,19 +59,20 @@ const bucket = new s3.Bucket(customResourceStack, 'AgentcoreBucket', {
   removalPolicy: cdk.RemovalPolicy.DESTROY,
 });
 
-// Deploy agentcore package to S3
+// Deploy agentcore package to S3 with content-hash prefix so CFN detects changes
+const zipHash = hashContent.substring(0, 8);
 const agentcoreDistPath = path.resolve(__dirname, '..', 'agentcore', 'dist');
 const deployment = new s3deploy.BucketDeployment(customResourceStack, 'AgentcoreDeployment', {
   sources: [s3deploy.Source.asset(agentcoreDistPath)],
   destinationBucket: bucket,
-  destinationKeyPrefix: 'main',
+  destinationKeyPrefix: `main/${zipHash}`,
 });
 
 // Create AgentCore Runtime construct
 const runtime = new agentcore.Runtime(customResourceStack, 'AgentcoreRuntime', {
   runtimeName: 'you2book_http_server',
   agentRuntimeArtifact: agentcore.AgentRuntimeArtifact.fromS3(
-    { bucketName: bucket.bucketName, objectKey: 'main/deployment_package.zip' },
+    { bucketName: bucket.bucketName, objectKey: `main/${zipHash}/deployment_package.zip` },
     agentcore.AgentCoreRuntime.PYTHON_3_12,
     ['main.py']
   ),

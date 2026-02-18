@@ -6,8 +6,7 @@ from strands import Agent
 
 app = FastAPI(title="Strands Agent Server", version="1.0.0")
 
-# Initialize Strands agent
-strands_agent = Agent()
+strands_agent = Agent(model="us.amazon.nova-micro-v1:0")
 
 class InvocationRequest(BaseModel):
     input: Dict[str, Any]
