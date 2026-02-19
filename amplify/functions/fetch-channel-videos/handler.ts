@@ -217,7 +217,7 @@ async function fetchAllVideos(channelId: string, apiKey: string): Promise<YouTub
       // Step 1: Get video IDs from search.list
       const searchUrl = 'https://www.googleapis.com/youtube/v3/search'
       const searchParams: Record<string, string | number> = {
-        part: 'snippet',
+        part: 'id',
         channelId: actualChannelId,
         type: 'video',
         maxResults: 50,
@@ -388,6 +388,12 @@ async function saveVideos(
           owner: { eq: owner }
         }
       })
+
+      if (existingVideos.errors) {
+        console.error(`Error querying existing video ${video.youtubeId}:`, existingVideos.errors)
+        failedCount++
+        continue
+      }
       
       if (existingVideos.data && existingVideos.data.length > 0) {
         // Video already exists, skip it
