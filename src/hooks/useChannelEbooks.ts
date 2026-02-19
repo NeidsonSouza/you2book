@@ -31,6 +31,10 @@ export function useChannelEbooks(channelId: string): UseChannelEbooksResult {
           filter: { channelId: { eq: channelId } }
         });
 
+        if (response.errors) {
+          throw new Error('Failed to fetch ebooks: ' + response.errors.map(e => e.message).join(', '));
+        }
+
         // For each ebook, load related sourceVideos using Promise.all for parallel loading
         const ebooksWithVideos = await Promise.all(
           response.data.map(async (ebook) => {

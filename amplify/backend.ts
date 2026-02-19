@@ -2,11 +2,13 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as cdk from 'aws-cdk-lib';
+import { Function } from 'aws-cdk-lib/aws-lambda';
 import * as agentcore from '@aws-cdk/aws-bedrock-agentcore-alpha';
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
 import { fetchChannelVideos } from './functions/fetch-channel-videos/resource';
+import { agentInvoker } from './functions/agent-invoker/resource';
 import { execSync } from 'child_process';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
@@ -20,11 +22,10 @@ const backend = defineBackend({
   auth,
   data,
   fetchChannelVideos,
+  agentInvoker,
 });
 
-// Extract Cognito resources from Amplify backend
-const userPool = backend.auth.resources.userPool;
-const userPoolClient = backend.auth.resources.userPoolClient;
+
 
 // Only run build if agentcore source files have changed
 const agentcoreSrcDir = path.resolve(__dirname, '..', 'agentcore', 'src');
@@ -76,10 +77,7 @@ const runtime = new agentcore.Runtime(customResourceStack, 'AgentcoreRuntime', {
     agentcore.AgentCoreRuntime.PYTHON_3_12,
     ['main.py']
   ),
-  authorizerConfiguration: agentcore.RuntimeAuthorizerConfiguration.usingCognito(
-    userPool,
-    [userPoolClient]
-  ),
+  authorizerConfiguration: agentcore.RuntimeAuthorizerConfiguration.usingIAM(),
   protocolConfiguration: agentcore.ProtocolType.HTTP,
   networkConfiguration: agentcore.RuntimeNetworkConfiguration.usingPublicNetwork(),
   description: 'You2Book HTTP server runtime',
@@ -131,6 +129,13 @@ runtime.addToRolePolicy(new iam.PolicyStatement({
   ],
   resources: ['arn:aws:logs:*:*:log-group:/aws/bedrock-agentcore/runtimes/*'],
 }));
+
+// Grant the agent-invoker Lambda permission to invoke the AgentCore Runtime
+const agentInvokerLambda = backend.agentInvoker.resources.lambda as Function;
+runtime.grantInvoke(agentInvokerLambda);
+
+// Pass the Runtime ARN to the agent-invoker Lambda as an environment variable
+agentInvokerLambda.addEnvironment('AGENT_RUNTIME_ARN', runtime.agentRuntimeArn);
 
 // Export the Runtime ARN as a CfnOutput
 new cdk.CfnOutput(customResourceStack, 'AgentcoreRuntimeArn', {

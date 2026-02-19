@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from strands import Agent
 
 app = FastAPI(title="Strands Agent Server", version="1.0.0")
@@ -27,7 +27,7 @@ async def invoke_agent(request: InvocationRequest):
         result = strands_agent(user_message)
         response = {
             "message": result.message,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         return InvocationResponse(output=response)
