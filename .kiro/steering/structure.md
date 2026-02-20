@@ -1,67 +1,49 @@
 # Project Structure
 
-## Root Directory
 ```
-/
-├── src/                    # Frontend React application
-├── amplify/                # Backend infrastructure and Lambda functions
-├── public/                 # Static assets
-├── .kiro/                  # Kiro AI assistant configuration
-├── dist/                   # Production build output
-└── node_modules/           # Frontend dependencies
-```
-
-## Frontend Structure (`src/`)
-```
-src/
-├── main.tsx               # Application entry point
-├── App.tsx                # Main app component with channel list
-├── ChannelDetail.tsx      # Channel detail view
-├── VideoList.tsx          # Video list component
-├── VideoItem.tsx          # Individual video component
-├── lib/
-│   ├── amplifyClient.ts   # Amplify client configuration
-│   └── utils.ts           # Utility functions (with .test.ts)
-└── services/
-    ├── channelService.ts  # Channel CRUD operations
-    └── youtubeService.ts  # YouTube API integration (with .test.ts)
-```
-
-## Backend Structure (`amplify/`)
-```
-amplify/
-├── backend.ts             # Main backend configuration
-├── auth/
-│   └── resource.ts        # Cognito auth configuration
-├── data/
-│   └── resource.ts        # GraphQL schema and data models
-├── functions/
-│   └── fetch-channel-videos/
-│       ├── handler.ts     # Lambda function implementation
-│       ├── handler.test.ts # Lambda function tests
-│       ├── resource.ts    # Lambda resource definition
-│       ├── package.json   # Function-specific dependencies
-│       └── node_modules/  # Function-specific dependencies
-└── node_modules/          # Backend dependencies
+├── src/                          # React frontend (Vite)
+│   ├── main.tsx                  # App entry point, Amplify config, routing
+│   ├── App.tsx                   # Main page — channel list, add/delete channels
+│   ├── ChannelDetail.tsx         # Channel detail page — ebook list
+│   ├── VideoList.tsx             # Video list component for a channel
+│   ├── VideoItem.tsx             # Single video display component
+│   ├── types/index.ts            # Shared TypeScript types (derived from Amplify schema)
+│   ├── lib/
+│   │   ├── amplifyClient.ts      # Singleton Amplify data client
+│   │   └── utils.ts              # Utility functions (formatDate, formatDuration)
+│   ├── hooks/
+│   │   └── useChannelEbooks.ts   # Custom hook for fetching ebooks with source videos
+│   └── services/
+│       ├── channelService.ts     # Channel CRUD operations (cascade delete)
+│       └── youtubeService.ts     # YouTube fetch + save operations via Amplify queries
+│
+├── amplify/                      # Amplify Gen 2 backend definition
+│   ├── backend.ts                # Backend orchestration, CDK constructs, AgentCore setup
+│   ├── auth/resource.ts          # Cognito auth config
+│   ├── data/resource.ts          # Data schema (Channel, Video, Ebook, BookGroup, etc.)
+│   └── functions/
+│       ├── fetch-channel-videos/ # Lambda: YouTube API integration (TypeScript)
+│       │   ├── handler.ts        # Main handler with YouTube API calls + DB operations
+│       │   └── resource.ts       # Function definition with secrets
+│       └── agent-invoker/        # Lambda: Bedrock AgentCore invoker (Python)
+│           ├── index.py          # Handler that calls AgentCore runtime
+│           └── resource.ts       # CDK Function construct with Docker bundling
+│
+├── agentcore/                    # Strands Agent server (deployed to AgentCore)
+│   └── src/
+│       ├── main.py               # FastAPI app with Strands Agent
+│       └── requirements.txt      # Python dependencies
+│
+└── .kiro/
+    ├── specs/                    # Feature specifications
+    └── steering/                 # AI assistant steering rules (this directory)
 ```
 
-## Data Models (GraphQL Schema)
-- **Channel**: User's YouTube channels with owner-based authorization
-- **Video**: Videos from channels with metadata (title, description, duration)
-- **Ebook**: Generated ebooks from video collections (future feature)
-- **EbookVideo**: Junction table linking ebooks to source videos
-- **BookGroup**: Thematic groupings of videos for ebook generation
+## Conventions
 
-## Key Conventions
+- Frontend types in `src/types/` are derived from the Amplify schema (`Schema['ModelName']['type']`)
+- All Amplify data access goes through the shared client in `src/lib/amplifyClient.ts`
+- Lambda functions live under `amplify/functions/{function-name}/` with their own `resource.ts`
 - Tests are co-located with source files using `.test.ts` suffix
-- Lambda functions have their own `package.json` and dependencies
-- All data models use owner-based authorization for multi-tenancy
-- GraphQL queries/mutations are defined in `amplify/data/resource.ts`
-- Frontend services abstract Amplify client operations
-- TypeScript is used throughout (strict mode enabled)
-
-## Authorization Pattern
-All models follow owner-based authorization:
-- Users can only access their own data
-- Owner field is automatically set from Cognito user identity
-- Read and delete operations are restricted to owners
+- The Amplify data schema in `amplify/data/resource.ts` is the single source of truth for the data model
+- Owner-based authorization is used throughout — each user only sees their own data
