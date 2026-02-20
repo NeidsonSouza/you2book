@@ -17,7 +17,9 @@ export async function deleteChannel(channelId: string): Promise<void> {
   });
 
   if (videosResult.errors) {
-    throw new Error('Failed to fetch videos for deletion: ' + videosResult.errors.map(e => e.message).join(', '));
+    const message = videosResult.errors.map(e => e.message).join(', ');
+    console.error('[channelService.deleteChannel] Failed to fetch videos', { channelId, error: message });
+    throw new Error(`deleteChannel: Failed to fetch videos: ${message}`);
   }
 
   const videos = videosResult.data;
@@ -26,7 +28,7 @@ export async function deleteChannel(channelId: string): Promise<void> {
     const deleteVideoResult = await client.models.Video.delete({ id: video.id });
     if (deleteVideoResult.errors) {
       const errorMsg = `Failed to delete video ${video.id}: ${deleteVideoResult.errors.map(e => e.message).join(', ')}`;
-      console.error(errorMsg);
+      console.error('[channelService.deleteChannel] Failed to delete video', { channelId, videoId: video.id, error: errorMsg });
       errors.push(errorMsg);
     }
   }
@@ -37,7 +39,9 @@ export async function deleteChannel(channelId: string): Promise<void> {
   });
 
   if (ebooksResult.errors) {
-    throw new Error('Failed to fetch ebooks for deletion: ' + ebooksResult.errors.map(e => e.message).join(', '));
+    const message = ebooksResult.errors.map(e => e.message).join(', ');
+    console.error('[channelService.deleteChannel] Failed to fetch ebooks', { channelId, error: message });
+    throw new Error(`deleteChannel: Failed to fetch ebooks: ${message}`);
   }
 
   const ebooks = ebooksResult.data;
@@ -50,14 +54,14 @@ export async function deleteChannel(channelId: string): Promise<void> {
 
     if (ebookVideosResult.errors) {
       const errorMsg = `Failed to fetch ebook videos for ebook ${ebook.id}: ${ebookVideosResult.errors.map(e => e.message).join(', ')}`;
-      console.error(errorMsg);
+      console.error('[channelService.deleteChannel] Failed to fetch ebook videos', { channelId, ebookId: ebook.id, error: errorMsg });
       errors.push(errorMsg);
     } else {
       for (const ebookVideo of ebookVideosResult.data) {
         const deleteEbookVideoResult = await client.models.EbookVideo.delete({ id: ebookVideo.id });
         if (deleteEbookVideoResult.errors) {
           const errorMsg = `Failed to delete ebook video ${ebookVideo.id}: ${deleteEbookVideoResult.errors.map(e => e.message).join(', ')}`;
-          console.error(errorMsg);
+          console.error('[channelService.deleteChannel] Failed to delete ebook video', { channelId, ebookId: ebook.id, ebookVideoId: ebookVideo.id, error: errorMsg });
           errors.push(errorMsg);
         }
       }
@@ -67,7 +71,7 @@ export async function deleteChannel(channelId: string): Promise<void> {
     const deleteEbookResult = await client.models.Ebook.delete({ id: ebook.id });
     if (deleteEbookResult.errors) {
       const errorMsg = `Failed to delete ebook ${ebook.id}: ${deleteEbookResult.errors.map(e => e.message).join(', ')}`;
-      console.error(errorMsg);
+      console.error('[channelService.deleteChannel] Failed to delete ebook', { channelId, ebookId: ebook.id, error: errorMsg });
       errors.push(errorMsg);
     }
   }
@@ -77,6 +81,7 @@ export async function deleteChannel(channelId: string): Promise<void> {
 
   if (result.errors) {
     const errorMsg = 'Failed to delete channel: ' + result.errors.map(e => e.message).join(', ');
+    console.error('[channelService.deleteChannel] Failed to delete channel', { channelId, error: errorMsg });
     errors.push(errorMsg);
   }
 

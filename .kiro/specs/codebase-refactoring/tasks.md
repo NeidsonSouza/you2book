@@ -66,12 +66,12 @@ Refactor the You2Book codebase for improved maintainability, debuggability, and 
   - [x] 8.3 Update any imports or callers affected by the removals; if `youtubeService.ts` only has `fetchVideosFromYouTube` left, keep it as a thin service wrapper
     - _Requirements: 7.1_
 
-- [ ] 9. Standardize frontend error handling
-  - [ ] 9.1 Update `src/services/channelService.ts` — add function name prefix to all error messages and console.error calls, include entity identifiers in log metadata
+- [x] 9. Standardize frontend error handling
+  - [x] 9.1 Update `src/services/channelService.ts` — add function name prefix to all error messages and console.error calls, include entity identifiers in log metadata
     - _Requirements: 3.1, 3.2, 3.3_
-  - [ ] 9.2 Update `src/services/youtubeService.ts` — add function name prefix to error messages and console.error calls
+  - [x] 9.2 Update `src/services/youtubeService.ts` — add function name prefix to error messages and console.error calls
     - _Requirements: 3.1, 3.3_
-  - [ ] 9.3 Ensure `src/ChannelDetail.tsx` error display uses `role="alert"` consistently (already present, verify)
+  - [x] 9.3 Ensure `src/ChannelDetail.tsx` error display uses `role="alert"` consistently (already present, verify)
     - _Requirements: 8.2_
 
 - [ ] 10. Checkpoint — Ensure all tests pass

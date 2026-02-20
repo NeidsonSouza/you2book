@@ -124,7 +124,7 @@ function App(): React.JSX.Element {
       </form>
 
       {fetchError && (
-        <div className="error-message">
+        <div className="error-message" role="alert">
           {fetchError}
         </div>
       )}

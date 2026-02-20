@@ -57,7 +57,7 @@ function VideoList({ channelId }: VideoListProps): React.JSX.Element {
 
   if (error) {
     return (
-      <div className="video-list-error">
+      <div className="video-list-error" role="alert">
         <p>{error}</p>
       </div>
     );

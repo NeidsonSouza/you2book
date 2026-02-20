@@ -23,15 +23,19 @@ export async function fetchVideosFromYouTube(channelUrl: string): Promise<VideoM
   });
 
   if (result.errors) {
-    throw new Error(result.errors.map(e => e.message).join(', '));
+    const message = result.errors.map(e => e.message).join(', ');
+    console.error('[youtubeService.fetchVideosFromYouTube] Query failed', { channelUrl, error: message });
+    throw new Error(`fetchVideosFromYouTube: ${message}`);
   }
 
   if (!result.data) {
-    throw new Error('No data returned from query');
+    console.error('[youtubeService.fetchVideosFromYouTube] No data returned', { channelUrl });
+    throw new Error('fetchVideosFromYouTube: No data returned from query');
   }
 
   if (!result.data.success) {
-    throw new Error(result.data.message);
+    console.error('[youtubeService.fetchVideosFromYouTube] Backend reported error', { channelUrl, message: result.data.message });
+    throw new Error(`fetchVideosFromYouTube: ${result.data.message}`);
   }
 
   if (!result.data.videos || !Array.isArray(result.data.videos)) {
