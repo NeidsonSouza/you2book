@@ -74,13 +74,13 @@ Refactor the You2Book codebase for improved maintainability, debuggability, and 
   - [x] 9.3 Ensure `src/ChannelDetail.tsx` error display uses `role="alert"` consistently (already present, verify)
     - _Requirements: 8.2_
 
-- [ ] 10. Checkpoint — Ensure all tests pass
+- [x] 10. Checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 11. Improve Python layer logging and error handling
-  - [ ] 11.1 Update `amplify/functions/agent-invoker/index.py` — avoid logging full event payload, log only metadata (session ID, prompt length, function ARN); ensure error logs include error type name and runtime ARN without full prompt
+- [x] 11. Improve Python layer logging and error handling
+  - [x] 11.1 Update `amplify/functions/agent-invoker/index.py` — avoid logging full event payload, log only metadata (session ID, prompt length, function ARN); ensure error logs include error type name and runtime ARN without full prompt
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
-  - [ ] 11.2 Update `agentcore/src/main.py` — add Python `logging` module with consistent format, log request metadata (prompt length, timestamp) on invocation, log response metadata (message length, timestamp) on completion, add structured error logging in exception handler
+  - [x] 11.2 Update `agentcore/src/main.py` — add Python `logging` module with consistent format, log request metadata (prompt length, timestamp) on invocation, log response metadata (message length, timestamp) on completion, add structured error logging in exception handler
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
 - [ ] 12. Improve naming and inline documentation
