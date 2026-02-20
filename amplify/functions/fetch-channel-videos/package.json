@@ -3,10 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "googleapis": "^144.0.0",
     "axios": "^1.7.0",
-    "aws-amplify": "^6.0.0",
-    "@aws-amplify/backend": "^1.0.0"
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/client-lambda": "^3.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
