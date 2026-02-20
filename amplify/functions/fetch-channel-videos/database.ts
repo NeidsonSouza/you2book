@@ -35,7 +35,6 @@ export async function upsertChannel(
   owner: string
 ): Promise<string> {
   try {
-    // Query for existing channel by youtubeChannelId
     console.log(JSON.stringify({
       step: 'upsertChannel',
       operation: 'query',
@@ -62,22 +61,22 @@ export async function upsertChannel(
     }
     
     if (existingChannels.data && existingChannels.data.length > 0) {
-      // Update existing channel name
+      // Update name only - URL and youtubeChannelId are immutable after creation
       const channelId = existingChannels.data[0].id
-      const updateResult = await client.models.Channel.update({
+      const channelUpdateResult = await client.models.Channel.update({
         id: channelId,
         name: channelData.name,
       })
       
-      if (updateResult.errors) {
+      if (channelUpdateResult.errors) {
         console.error(JSON.stringify({
           step: 'upsertChannel',
           operation: 'update',
           channelId,
           status: 'error',
-          errors: updateResult.errors.map(e => e.message)
+          errors: channelUpdateResult.errors.map(e => e.message)
         }))
-        throw new Error('upsertChannel: Failed to update channel (channelId=' + channelId + '): ' + updateResult.errors.map(e => e.message).join(', '))
+        throw new Error('upsertChannel: Failed to update channel (channelId=' + channelId + '): ' + channelUpdateResult.errors.map(e => e.message).join(', '))
       }
       
       console.log(JSON.stringify({
@@ -88,7 +87,6 @@ export async function upsertChannel(
       }))
       return channelId
     } else {
-      // Create new channel
       console.log(JSON.stringify({
         step: 'upsertChannel',
         operation: 'create',
@@ -96,35 +94,35 @@ export async function upsertChannel(
         owner,
         status: 'creating'
       }))
-      const result = await client.models.Channel.create({
+      const channelCreateResult = await client.models.Channel.create({
         name: channelData.name,
         url: channelData.url,
         youtubeChannelId: channelData.youtubeChannelId,
         owner: owner,
       })
       
-      if (result.errors) {
+      if (channelCreateResult.errors) {
         console.error(JSON.stringify({
           step: 'upsertChannel',
           operation: 'create',
           youtubeChannelId: channelData.youtubeChannelId,
           status: 'error',
-          errors: result.errors.map(e => e.message)
+          errors: channelCreateResult.errors.map(e => e.message)
         }))
-        throw new Error('upsertChannel: Failed to create channel (youtubeChannelId=' + channelData.youtubeChannelId + '): ' + result.errors.map(e => e.message).join(', '))
+        throw new Error('upsertChannel: Failed to create channel (youtubeChannelId=' + channelData.youtubeChannelId + '): ' + channelCreateResult.errors.map(e => e.message).join(', '))
       }
       
-      if (!result.data) {
+      if (!channelCreateResult.data) {
         throw new Error('upsertChannel: Failed to create channel - no data returned (youtubeChannelId=' + channelData.youtubeChannelId + ')')
       }
       
       console.log(JSON.stringify({
         step: 'upsertChannel',
         operation: 'create',
-        channelId: result.data.id,
+        channelId: channelCreateResult.data.id,
         status: 'success'
       }))
-      return result.data.id
+      return channelCreateResult.data.id
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : JSON.stringify(error)
@@ -169,7 +167,6 @@ export async function saveVideos(
   
   for (const video of videos) {
     try {
-      // Query for existing video by youtubeId
       const existingVideos = await client.models.Video.list({
         filter: { 
           youtubeId: { eq: video.youtubeId },
@@ -190,7 +187,7 @@ export async function saveVideos(
       }
       
       if (existingVideos.data && existingVideos.data.length > 0) {
-        // Video already exists, skip it (and skip transcript fetching)
+        // Skip duplicate - transcript was already processed on first save
         skippedCount++
         transcriptStats.skipped++
         console.log(JSON.stringify({
@@ -202,8 +199,7 @@ export async function saveVideos(
         continue
       }
       
-      // Create new video
-      const result = await client.models.Video.create({
+      const videoCreateResult = await client.models.Video.create({
         youtubeId: video.youtubeId,
         title: video.title,
         description: video.description || '',
@@ -212,17 +208,16 @@ export async function saveVideos(
         owner: owner,
       })
       
-      if (result.data) {
+      if (videoCreateResult.data) {
         savedCount++
         console.log(JSON.stringify({
           step: 'saveVideos',
           operation: 'create',
           videoYoutubeId: video.youtubeId,
-          videoId: result.data.id,
+          videoId: videoCreateResult.data.id,
           status: 'success'
         }))
         
-        // Process transcript for the newly created video
         const transcriptResult = await processTranscript({
           videoYoutubeId: video.youtubeId,
           channelId,
@@ -232,21 +227,20 @@ export async function saveVideos(
         })
         
         if (transcriptResult.success && transcriptResult.key) {
-          // Update video record with transcript information
-          const updateResult = await client.models.Video.update({
-            id: result.data.id,
+          const transcriptUpdateResult = await client.models.Video.update({
+            id: videoCreateResult.data.id,
             transcriptKey: transcriptResult.key,
             transcriptAvailable: true
           })
           
-          if (updateResult.errors) {
+          if (transcriptUpdateResult.errors) {
             console.error(JSON.stringify({
               step: 'saveVideos',
               operation: 'updateTranscript',
               videoYoutubeId: video.youtubeId,
-              videoId: result.data.id,
+              videoId: videoCreateResult.data.id,
               status: 'error',
-              errors: updateResult.errors.map(e => e.message)
+              errors: transcriptUpdateResult.errors.map(e => e.message)
             }))
             transcriptStats.failed++
           } else {
@@ -255,7 +249,7 @@ export async function saveVideos(
               step: 'saveVideos',
               operation: 'updateTranscript',
               videoYoutubeId: video.youtubeId,
-              videoId: result.data.id,
+              videoId: videoCreateResult.data.id,
               status: 'success'
             }))
           }
@@ -273,7 +267,7 @@ export async function saveVideos(
         }))
       }
     } catch (error) {
-      // Handle individual save failures gracefully - log and continue
+      // Continue processing remaining videos even if one fails
       failedCount++
       console.error(JSON.stringify({
         step: 'saveVideos',
@@ -281,11 +275,9 @@ export async function saveVideos(
         status: 'error',
         message: error instanceof Error ? error.message : 'Unknown error'
       }))
-      // Continue processing remaining videos
     }
   }
   
-  // Log transcript processing summary
   console.log(JSON.stringify({
     step: 'saveVideos',
     operation: 'summary',

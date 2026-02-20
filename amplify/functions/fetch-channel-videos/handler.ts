@@ -41,7 +41,6 @@ function getYouTubeApiKey(): string {
  * @throws Error if the bucket name is not configured
  */
 function getTranscriptBucketName(): string {
-  // TRANSCRIPT_BUCKET_NAME is added dynamically via CDK in backend.ts
   const bucketName = (env as { TRANSCRIPT_BUCKET_NAME?: string }).TRANSCRIPT_BUCKET_NAME
   
   if (!bucketName) {

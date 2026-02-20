@@ -12,25 +12,22 @@ export function extractChannelId(url: string): string {
 
     const pathname = urlObj.pathname
 
-    // Handle /channel/{CHANNEL_ID} format
+    // Handle different YouTube URL formats
     const channelMatch = pathname.match(/^\/channel\/([^/]+)/)
     if (channelMatch) {
       return channelMatch[1]
     }
 
-    // Handle /@{HANDLE} format
     const handleMatch = pathname.match(/^\/@([^/]+)/)
     if (handleMatch) {
       return `@${handleMatch[1]}`
     }
 
-    // Handle /c/{CUSTOM_URL} format
     const customMatch = pathname.match(/^\/c\/([^/]+)/)
     if (customMatch) {
       return customMatch[1]
     }
 
-    // Handle /user/{USERNAME} format
     const userMatch = pathname.match(/^\/user\/([^/]+)/)
     if (userMatch) {
       return userMatch[1]

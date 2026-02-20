@@ -74,17 +74,14 @@ export async function processTranscript(params: {
   const { videoYoutubeId, channelId, owner, apiKey, bucketName } = params
   
   try {
-    // Step 1: Fetch transcript from YouTube
     const plainText = await fetchTranscript(videoYoutubeId, apiKey)
     
     if (!plainText) {
       return { success: false }
     }
     
-    // Step 2: Build S3 key
     const key = buildTranscriptKey(owner, channelId, videoYoutubeId)
     
-    // Step 3: Upload to S3
     await uploadTranscriptToS3({ bucketName, key, content: plainText })
     
     return { success: true, key }

@@ -83,10 +83,10 @@ Refactor the You2Book codebase for improved maintainability, debuggability, and 
   - [x] 11.2 Update `agentcore/src/main.py` — add Python `logging` module with consistent format, log request metadata (prompt length, timestamp) on invocation, log response metadata (message length, timestamp) on completion, add structured error logging in exception handler
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-- [ ] 12. Improve naming and inline documentation
-  - [ ] 12.1 Review and improve variable names across extracted Lambda modules — ensure variables describe content not type (e.g., rename generic `result` variables to descriptive names like `channelRecord`, `videoCreateResult`)
+- [x] 12. Improve naming and inline documentation
+  - [x] 12.1 Review and improve variable names across extracted Lambda modules — ensure variables describe content not type (e.g., rename generic `result` variables to descriptive names like `channelRecord`, `videoCreateResult`)
     - _Requirements: 10.2_
-  - [ ] 12.2 Review inline comments across all modified files — remove comments that restate code, add comments explaining non-obvious "why" decisions
+  - [x] 12.2 Review inline comments across all modified files — remove comments that restate code, add comments explaining non-obvious "why" decisions
     - _Requirements: 10.3_
 
 - [ ] 13. Final checkpoint — Ensure all tests pass

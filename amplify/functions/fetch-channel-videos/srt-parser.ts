@@ -9,22 +9,21 @@ export function stripSrtTimestamps(srtContent: string): string {
   for (const line of lines) {
     const trimmedLine = line.trim()
 
-    // Skip empty lines
     if (trimmedLine === '') {
       continue
     }
 
-    // Skip sequence numbers (lines that are just digits)
+    // Skip sequence numbers
     if (/^\d+$/.test(trimmedLine)) {
       continue
     }
 
-    // Skip timestamp lines (format: 00:00:00,000 --> 00:00:01,000)
+    // Skip timestamp lines
     if (/\d{2}:\d{2}:\d{2}/.test(trimmedLine)) {
       continue
     }
 
-    // Remove HTML-like tags and keep the text content
+    // Remove HTML-like tags
     const withoutTags = trimmedLine.replace(/<[^>]+>/g, '')
 
     if (withoutTags.trim() !== '') {

@@ -22,23 +22,21 @@ export interface CaptionTrack {
 
 /**
  * Selects the preferred caption track from an array of available tracks
- * Prefers English tracks, falls back to the first available track
+ * Prefers English tracks for consistency, falls back to first available
  * @param tracks Array of caption track objects from YouTube API
  * @returns The preferred caption track, or null if the array is empty
  */
 function selectCaptionTrack(tracks: CaptionTrack[]): CaptionTrack | null {
-  // Return null if no tracks available
   if (!tracks || tracks.length === 0) {
     return null
   }
   
-  // Prefer English track
+  // Prefer English for consistent language processing downstream
   const englishTrack = tracks.find(track => track.snippet.language === 'en')
   if (englishTrack) {
     return englishTrack
   }
   
-  // Fallback to first available track
   return tracks[0]
 }
 
@@ -54,23 +52,21 @@ export async function fetchChannelMetadata(channelId: string, apiKey: string): P
     const baseUrl = 'https://www.googleapis.com/youtube/v3/channels'
     let params: Record<string, string>
 
-    // Determine how to look up the channel based on the identifier format
+    // Determine how to look up the channel based on identifier format
+    // YouTube API requires different parameters for channel IDs vs handles vs usernames
     if (channelId.startsWith('UC')) {
-      // It's already a channel ID
       params = {
         part: 'snippet',
         id: channelId,
         key: apiKey
       }
     } else if (channelId.startsWith('@')) {
-      // It's a handle - use forHandle parameter (without the @ symbol)
       params = {
         part: 'snippet',
         forHandle: channelId.substring(1),
         key: apiKey
       }
     } else {
-      // It's a custom URL or username - use forUsername parameter
       params = {
         part: 'snippet',
         forUsername: channelId,
@@ -83,13 +79,13 @@ export async function fetchChannelMetadata(channelId: string, apiKey: string): P
       channelId,
       status: 'requesting'
     }))
-    const response = await axios.get(baseUrl, { params })
+    const channelResponse = await axios.get(baseUrl, { params })
 
-    if (!response.data.items || response.data.items.length === 0) {
+    if (!channelResponse.data.items || channelResponse.data.items.length === 0) {
       throw new Error(`fetchChannelMetadata: Channel not found (channelId=${channelId})`)
     }
 
-    const channelName = response.data.items[0].snippet.title
+    const channelName = channelResponse.data.items[0].snippet.title
     return channelName
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -135,23 +131,21 @@ export async function fetchAllVideos(channelId: string, apiKey: string): Promise
     const allVideos: YouTubeVideo[] = []
     let nextPageToken: string | undefined = undefined
 
-    // Resolve channelId to actual channel ID if it's not already one
+    // Resolve channelId to actual channel ID if needed
+    // Channel IDs start with "UC" - other formats require API lookup first
     let actualChannelId = channelId
 
-    // Channel IDs start with "UC" - if it doesn't, we need to resolve it
     if (!channelId.startsWith('UC')) {
       const channelsUrl = 'https://www.googleapis.com/youtube/v3/channels'
       let channelParams: Record<string, string>
 
       if (channelId.startsWith('@')) {
-        // It's a handle - use forHandle parameter (without the @ symbol)
         channelParams = {
           part: 'id',
           forHandle: channelId.substring(1),
           key: apiKey
         }
       } else {
-        // It's a custom URL or username - use forUsername parameter
         channelParams = {
           part: 'id',
           forUsername: channelId,
@@ -168,9 +162,8 @@ export async function fetchAllVideos(channelId: string, apiKey: string): Promise
       actualChannelId = channelResponse.data.items[0].id
     }
 
-    // Paginate through all videos
+    // Paginate through all videos using search.list + videos.list
     do {
-      // Step 1: Get video IDs from search.list
       const searchUrl = 'https://www.googleapis.com/youtube/v3/search'
       const searchParams: Record<string, string | number> = {
         part: 'id',
@@ -188,19 +181,19 @@ export async function fetchAllVideos(channelId: string, apiKey: string): Promise
       const searchResponse = await axios.get(searchUrl, { params: searchParams })
 
       if (!searchResponse.data.items || searchResponse.data.items.length === 0) {
-        break // No more videos
+        break
       }
 
-      // Extract video IDs
+      // Extract video IDs for batch metadata fetch
       const videoIds = searchResponse.data.items
         .map((item: { id: { videoId: string } }) => item.id.videoId)
-        .filter((id: string) => id) // Filter out any undefined IDs
+        .filter((id: string) => id)
 
       if (videoIds.length === 0) {
         break
       }
 
-      // Step 2: Get video details from videos.list
+      // Fetch full metadata for all videos in this page
       const videosUrl = 'https://www.googleapis.com/youtube/v3/videos'
       const videosParams = {
         part: 'snippet,contentDetails',
@@ -211,12 +204,12 @@ export async function fetchAllVideos(channelId: string, apiKey: string): Promise
       const videosResponse = await axios.get(videosUrl, { params: videosParams })
 
       if (videosResponse.data.items) {
-        for (const item of videosResponse.data.items) {
+        for (const videoItem of videosResponse.data.items) {
           allVideos.push({
-            youtubeId: item.id,
-            title: item.snippet.title,
-            description: item.snippet.description || '',
-            duration: item.contentDetails.duration
+            youtubeId: videoItem.id,
+            title: videoItem.snippet.title,
+            description: videoItem.snippet.description || '',
+            duration: videoItem.contentDetails.duration
           })
         }
       }
@@ -268,7 +261,6 @@ export async function fetchTranscript(videoYoutubeId: string, apiKey: string): P
       auth: apiKey
     })
     
-    // Step 1: List available caption tracks
     const captionsListResponse = await youtube.captions.list({
       part: ['snippet'],
       videoId: videoYoutubeId
@@ -285,7 +277,6 @@ export async function fetchTranscript(videoYoutubeId: string, apiKey: string): P
       return null
     }
     
-    // Step 2: Select the best caption track
     const selectedTrack = selectCaptionTrack(tracks)
     
     if (!selectedTrack) {
@@ -305,7 +296,7 @@ export async function fetchTranscript(videoYoutubeId: string, apiKey: string): P
       status: 'downloading'
     }))
     
-    // Step 3: Download the caption content in SRT format
+    // Download captions in SRT format for structured parsing
     const captionDownloadResponse = await youtube.captions.download({
       id: selectedTrack.id,
       tfmt: 'srt'
@@ -315,7 +306,6 @@ export async function fetchTranscript(videoYoutubeId: string, apiKey: string): P
     
     const srtContent = captionDownloadResponse.data as string
     
-    // Step 4: Strip timestamps and convert to plain text
     const plainText = stripSrtTimestamps(srtContent)
     
     console.log(JSON.stringify({
@@ -328,7 +318,7 @@ export async function fetchTranscript(videoYoutubeId: string, apiKey: string): P
     
     return plainText
   } catch (error) {
-    // Log error and return null - don't throw to allow processing to continue
+    // Don't throw - allow video processing to continue even if transcript fails
     console.error(JSON.stringify({
       step: 'fetchTranscript',
       videoYoutubeId,
