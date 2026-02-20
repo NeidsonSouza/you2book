@@ -20,6 +20,8 @@ const schema = a.schema({
       description: a.string(),
       duration: a.string(),
       summary: a.string(),
+      transcriptKey: a.string(),
+      transcriptAvailable: a.boolean().default(false),
       channelId: a.id().required(),
       channel: a.belongsTo('Channel', 'channelId'),
       owner: a.string().authorization(allow => [allow.owner().to(['read', 'delete'])]),
