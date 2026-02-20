@@ -49,21 +49,21 @@ Refactor the You2Book codebase for improved maintainability, debuggability, and 
   - [x] 5.4 Ensure no log statement includes the full API key value — log only a masked version or omit it entirely
     - _Requirements: 4.4_
 
-- [ ] 6. Checkpoint — Ensure all tests pass
+- [x] 6. Checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Add tests for frontend utility functions
-  - [ ] 7.1 Create `src/lib/utils.test.ts` — unit tests for `formatDate` covering: valid Date object, valid ISO string, null, undefined, invalid string
+- [x] 7. Add tests for frontend utility functions
+  - [x] 7.1 Create `src/lib/utils.test.ts` — unit tests for `formatDate` covering: valid Date object, valid ISO string, null, undefined, invalid string
     - _Requirements: 6.1_
-  - [ ] 7.2 Add unit tests for `formatDuration` in `src/lib/utils.test.ts` covering: hours+minutes+seconds, minutes+seconds, seconds only, null, undefined, non-matching string
+  - [x] 7.2 Add unit tests for `formatDuration` in `src/lib/utils.test.ts` covering: hours+minutes+seconds, minutes+seconds, seconds only, null, undefined, non-matching string
     - _Requirements: 6.2_
 
-- [ ] 8. Remove dead code and duplication from frontend services
-  - [ ] 8.1 Remove `saveVideosToDatabase` from `src/services/youtubeService.ts` — this duplicates the Lambda handler's video saving logic
+- [x] 8. Remove dead code and duplication from frontend services
+  - [x] 8.1 Remove `saveVideosToDatabase` from `src/services/youtubeService.ts` — this duplicates the Lambda handler's video saving logic
     - _Requirements: 7.3_
-  - [ ] 8.2 Remove `extractChannelNameFromUrl` from `src/services/youtubeService.ts` — this function is unused
+  - [x] 8.2 Remove `extractChannelNameFromUrl` from `src/services/youtubeService.ts` — this function is unused
     - _Requirements: 7.2_
-  - [ ] 8.3 Update any imports or callers affected by the removals; if `youtubeService.ts` only has `fetchVideosFromYouTube` left, keep it as a thin service wrapper
+  - [x] 8.3 Update any imports or callers affected by the removals; if `youtubeService.ts` only has `fetchVideosFromYouTube` left, keep it as a thin service wrapper
     - _Requirements: 7.1_
 
 - [ ] 9. Standardize frontend error handling
