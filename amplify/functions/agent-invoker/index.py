@@ -15,25 +15,24 @@ agent_core_client = boto3.client('bedrock-agentcore', region_name=REGION)
 
 
 def handler(event, context):
-    logger.info(f"Event received: {json.dumps(event) if isinstance(event, dict) else event}")
-    logger.info(f"Function ARN: {context.invoked_function_arn}")
-    logger.info(f"Request ID: {context.aws_request_id}")
-    logger.info(f"Memory limit: {context.memory_limit_in_mb}MB | Time remaining: {context.get_remaining_time_in_millis()}ms")
-
     body = event if isinstance(event, dict) else json.loads(event)
-
+    
     prompt = body.get('prompt', '')
+    session_id = body.get('sessionId') or str(uuid.uuid4()) + '-agentinvoker'
+    
+    # Log only metadata, not full event payload
+    logger.info(f"Request received | functionArn={context.invoked_function_arn} | requestId={context.aws_request_id} | sessionId={session_id} | promptLength={len(prompt)}")
+    
     if not prompt:
-        logger.error("Missing required field: prompt")
+        logger.error(f"Missing required field: prompt | sessionId={session_id}")
         return {
             'statusCode': 400,
             'body': json.dumps({'error': 'Missing required field: prompt'})
         }
 
-    session_id = body.get('sessionId') or str(uuid.uuid4()) + '-agentinvoker'
     payload = json.dumps({'input': {'prompt': prompt}}).encode()
 
-    logger.info(f"Invoking AgentCore | arn={AGENT_RUNTIME_ARN} | sessionId={session_id} | prompt_length={len(prompt)}")
+    logger.info(f"Invoking AgentCore | runtimeArn={AGENT_RUNTIME_ARN} | sessionId={session_id} | promptLength={len(prompt)}")
 
     try:
         response = agent_core_client.invoke_agent_runtime(
@@ -43,7 +42,8 @@ def handler(event, context):
         )
 
         content_type = response.get('contentType', '')
-        logger.info(f"Response received | contentType={content_type} | httpStatus={response.get('ResponseMetadata', {}).get('HTTPStatusCode')}")
+        http_status = response.get('ResponseMetadata', {}).get('HTTPStatusCode')
+        logger.info(f"Response received | contentType={content_type} | httpStatus={http_status} | sessionId={session_id}")
 
         chunks = []
 
@@ -62,7 +62,7 @@ def handler(event, context):
         else:
             result = response['response'].read().decode('utf-8')
 
-        logger.info(f"Success | sessionId={session_id} | response_length={len(str(result))}")
+        logger.info(f"Success | sessionId={session_id} | responseLength={len(str(result))}")
 
         return {
             'statusCode': 200,
@@ -73,7 +73,8 @@ def handler(event, context):
         }
 
     except Exception as e:
-        logger.error(f"InvokeAgentRuntime failed | arn={AGENT_RUNTIME_ARN} | region={REGION} | sessionId={session_id} | error={type(e).__name__}: {e}", exc_info=True)
+        error_type = type(e).__name__
+        logger.error(f"InvokeAgentRuntime failed | errorType={error_type} | runtimeArn={AGENT_RUNTIME_ARN} | region={REGION} | sessionId={session_id} | error={str(e)}", exc_info=True)
         return {
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
