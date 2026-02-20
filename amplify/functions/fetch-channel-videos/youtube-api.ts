@@ -1,43 +1,11 @@
 // External libraries
 import axios from "axios"
-import { google } from "googleapis"
-
-// Local modules
-import { stripSrtTimestamps } from "./srt-parser"
 
 export interface YouTubeVideo {
   youtubeId: string
   title: string
   description: string
   duration: string
-}
-
-export interface CaptionTrack {
-  id: string
-  snippet: {
-    language: string
-    trackKind?: string
-  }
-}
-
-/**
- * Selects the preferred caption track from an array of available tracks
- * Prefers English tracks for consistency, falls back to first available
- * @param tracks Array of caption track objects from YouTube API
- * @returns The preferred caption track, or null if the array is empty
- */
-function selectCaptionTrack(tracks: CaptionTrack[]): CaptionTrack | null {
-  if (!tracks || tracks.length === 0) {
-    return null
-  }
-  
-  // Prefer English for consistent language processing downstream
-  const englishTrack = tracks.find(track => track.snippet.language === 'en')
-  if (englishTrack) {
-    return englishTrack
-  }
-  
-  return tracks[0]
 }
 
 /**
@@ -241,82 +209,144 @@ export async function fetchAllVideos(channelId: string, apiKey: string): Promise
   }
 }
 
+interface CaptionTrackInfo {
+  baseUrl: string
+  languageCode: string
+}
+
+interface CaptionsData {
+  playerCaptionsTracklistRenderer?: {
+    captionTracks?: CaptionTrackInfo[]
+  }
+}
+
 /**
- * Fetches captions for a YouTube video and returns plain text transcript
+ * Downloads and parses a caption track from YouTube's timedtext endpoint
+ * @param tracks Array of available caption tracks
+ * @param videoYoutubeId The YouTube video ID (for logging)
+ * @returns Plain text transcript, or null if download/parse fails
+ */
+async function downloadCaptionTrack(tracks: CaptionTrackInfo[], videoYoutubeId: string): Promise<string | null> {
+  // Prefer English, fall back to first available track
+  const selectedTrack = tracks.find((t: CaptionTrackInfo) => t.languageCode === 'en') ?? tracks[0]
+  const language = selectedTrack.languageCode
+
+  console.log(JSON.stringify({
+    step: 'fetchTranscript',
+    videoYoutubeId,
+    language,
+    status: 'downloading'
+  }))
+
+  // Fetch the transcript XML (fmt=srv3 gives XML with text nodes)
+  const transcriptUrl = `${selectedTrack.baseUrl}&fmt=srv3`
+  const transcriptResponse = await axios.get(transcriptUrl)
+  const xmlContent: string = transcriptResponse.data
+
+  // Extract plain text from the XML response
+  // Each caption segment is in a <p> tag with text content
+  const textSegments: string[] = []
+  const segmentRegex = /<p[^>]*>(.*?)<\/p>/gs
+  let match: RegExpExecArray | null
+  while ((match = segmentRegex.exec(xmlContent)) !== null) {
+    const text = match[1]
+      .replace(/<[^>]+>/g, '')  // strip inner tags like <s>
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .trim()
+    if (text) {
+      textSegments.push(text)
+    }
+  }
+
+  if (textSegments.length === 0) {
+    console.log(JSON.stringify({
+      step: 'fetchTranscript',
+      videoYoutubeId,
+      status: 'empty_transcript'
+    }))
+    return null
+  }
+
+  const plainText = textSegments.join('\n')
+
+  console.log(JSON.stringify({
+    step: 'fetchTranscript',
+    videoYoutubeId,
+    language,
+    characters: plainText.length,
+    status: 'success'
+  }))
+
+  return plainText
+}
+
+/**
+ * Fetches captions for a YouTube video using YouTube's public timedtext API.
+ * This avoids the OAuth2 requirement of the official Captions.download endpoint.
  * @param videoYoutubeId The YouTube video ID
- * @param apiKey The YouTube API key
+ * @param _apiKey The YouTube API key (unused — kept for interface compatibility)
  * @returns Plain text transcript content, or null if no captions available or on error
  */
-export async function fetchTranscript(videoYoutubeId: string, apiKey: string): Promise<string | null> {
+export async function fetchTranscript(videoYoutubeId: string, _apiKey: string): Promise<string | null> {
   try {
     console.log(JSON.stringify({
       step: 'fetchTranscript',
       videoYoutubeId,
       status: 'requesting'
     }))
-    
-    // Initialize YouTube API client
-    const youtube = google.youtube({
-      version: 'v3',
-      auth: apiKey
+
+    // Use YouTube's InnerTube API with the ANDROID client context.
+    // The WEB client often omits captions in server-side requests, but
+    // the ANDROID client reliably returns caption track metadata.
+    const innertubeUrl = 'https://www.youtube.com/youtubei/v1/player'
+    const playerResponse = await axios.post(innertubeUrl, {
+      videoId: videoYoutubeId,
+      context: {
+        client: {
+          clientName: 'ANDROID',
+          clientVersion: '19.29.37',
+          androidSdkVersion: 30,
+          hl: 'en',
+          gl: 'US'
+        }
+      }
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'com.google.android.youtube/19.29.37 (Linux; U; Android 11) gzip'
+      }
     })
-    
-    const captionsListResponse = await youtube.captions.list({
-      part: ['snippet'],
-      videoId: videoYoutubeId
-    })
-    
-    const tracks = captionsListResponse.data.items as CaptionTrack[] | undefined
-    
+
+    const data = playerResponse.data as {
+      captions?: CaptionsData
+      playabilityStatus?: { status?: string; reason?: string }
+    }
+
+    console.log(JSON.stringify({
+      step: 'fetchTranscript',
+      videoYoutubeId,
+      playabilityStatus: data?.playabilityStatus?.status,
+      hasCaptions: !!data?.captions,
+      trackCount: data?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length ?? 0,
+      status: 'innertube_response'
+    }))
+
+    const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks
     if (!tracks || tracks.length === 0) {
       console.log(JSON.stringify({
         step: 'fetchTranscript',
         videoYoutubeId,
-        status: 'no_captions'
+        status: 'no_captions',
+        reason: 'no_caption_tracks'
       }))
       return null
     }
-    
-    const selectedTrack = selectCaptionTrack(tracks)
-    
-    if (!selectedTrack) {
-      console.log(JSON.stringify({
-        step: 'fetchTranscript',
-        videoYoutubeId,
-        status: 'no_suitable_track'
-      }))
-      return null
-    }
-    
-    const language = selectedTrack.snippet.language
-    console.log(JSON.stringify({
-      step: 'fetchTranscript',
-      videoYoutubeId,
-      language,
-      status: 'downloading'
-    }))
-    
-    // Download captions in SRT format for structured parsing
-    const captionDownloadResponse = await youtube.captions.download({
-      id: selectedTrack.id,
-      tfmt: 'srt'
-    }, {
-      responseType: 'text'
-    })
-    
-    const srtContent = captionDownloadResponse.data as string
-    
-    const plainText = stripSrtTimestamps(srtContent)
-    
-    console.log(JSON.stringify({
-      step: 'fetchTranscript',
-      videoYoutubeId,
-      language,
-      characters: plainText.length,
-      status: 'success'
-    }))
-    
-    return plainText
+
+    return await downloadCaptionTrack(tracks, videoYoutubeId)
   } catch (error) {
     // Don't throw - allow video processing to continue even if transcript fails
     console.error(JSON.stringify({
