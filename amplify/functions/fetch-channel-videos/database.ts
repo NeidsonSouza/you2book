@@ -4,7 +4,7 @@ import { generateClient } from "aws-amplify/data"
 // Local modules
 import type { Schema } from "../../data/resource"
 import type { YouTubeVideo } from "./youtube-api"
-import { processTranscript } from "./transcript"
+import { invokeTranscriptLambda } from "./transcript-invoker"
 
 type AmplifyClient = ReturnType<typeof generateClient<Schema>>
 
@@ -142,7 +142,7 @@ export async function upsertChannel(
  * @param videos Array of video metadata objects
  * @param channelId The channel ID to associate videos with
  * @param owner The Cognito user ID (owner)
- * @param apiKey The YouTube API key for fetching captions
+ * @param apiKey The YouTube API key for fetching captions (unused, kept for compatibility)
  * @param bucketName The S3 bucket name for storing transcripts
  * @returns Object with counts of saved and skipped videos, plus transcript stats
  * @throws Error if critical database operations fail
@@ -164,6 +164,9 @@ export async function saveVideos(
     failed: 0,
     skipped: 0
   }
+  
+  // Track new videos for batch transcript processing
+  const newVideos: Array<{ youtubeId: string; dbId: string }> = []
   
   for (const video of videos) {
     try {
@@ -218,44 +221,11 @@ export async function saveVideos(
           status: 'success'
         }))
         
-        const transcriptResult = await processTranscript({
-          videoYoutubeId: video.youtubeId,
-          channelId,
-          owner,
-          apiKey,
-          bucketName
+        // Collect new video for batch transcript processing
+        newVideos.push({
+          youtubeId: video.youtubeId,
+          dbId: videoCreateResult.data.id
         })
-        
-        if (transcriptResult.success && transcriptResult.key) {
-          const transcriptUpdateResult = await client.models.Video.update({
-            id: videoCreateResult.data.id,
-            transcriptKey: transcriptResult.key,
-            transcriptAvailable: true
-          })
-          
-          if (transcriptUpdateResult.errors) {
-            console.error(JSON.stringify({
-              step: 'saveVideos',
-              operation: 'updateTranscript',
-              videoYoutubeId: video.youtubeId,
-              videoId: videoCreateResult.data.id,
-              status: 'error',
-              errors: transcriptUpdateResult.errors.map(e => e.message)
-            }))
-            transcriptStats.failed++
-          } else {
-            transcriptStats.successful++
-            console.log(JSON.stringify({
-              step: 'saveVideos',
-              operation: 'updateTranscript',
-              videoYoutubeId: video.youtubeId,
-              videoId: videoCreateResult.data.id,
-              status: 'success'
-            }))
-          }
-        } else {
-          transcriptStats.failed++
-        }
       } else {
         failedCount++
         console.error(JSON.stringify({
@@ -275,6 +245,93 @@ export async function saveVideos(
         status: 'error',
         message: error instanceof Error ? error.message : 'Unknown error'
       }))
+    }
+  }
+  
+  // Process transcripts in batch for all new videos
+  if (newVideos.length > 0) {
+    const functionName = process.env.SAVE_TRANSCRIPT_FUNCTION_NAME
+    
+    if (!functionName) {
+      console.warn(JSON.stringify({
+        step: 'saveVideos',
+        operation: 'batchTranscripts',
+        status: 'skipped',
+        message: 'SAVE_TRANSCRIPT_FUNCTION_NAME environment variable not set'
+      }))
+      transcriptStats.skipped += newVideos.length
+    } else {
+      try {
+        const transcriptResults = await invokeTranscriptLambda({
+          videoYoutubeIds: newVideos.map(v => v.youtubeId),
+          owner,
+          channelId,
+          bucketName,
+          functionName
+        })
+        
+        // Update DynamoDB with transcript results
+        for (const result of transcriptResults) {
+          const videoRecord = newVideos.find(v => v.youtubeId === result.videoYoutubeId)
+          
+          if (!videoRecord) {
+            console.warn(JSON.stringify({
+              step: 'saveVideos',
+              operation: 'updateTranscript',
+              videoYoutubeId: result.videoYoutubeId,
+              status: 'warning',
+              message: 'Video record not found for transcript result'
+            }))
+            continue
+          }
+          
+          if (result.success && result.transcriptKey) {
+            const transcriptUpdateResult = await client.models.Video.update({
+              id: videoRecord.dbId,
+              transcriptKey: result.transcriptKey,
+              transcriptAvailable: true
+            })
+            
+            if (transcriptUpdateResult.errors) {
+              console.error(JSON.stringify({
+                step: 'saveVideos',
+                operation: 'updateTranscript',
+                videoYoutubeId: result.videoYoutubeId,
+                videoId: videoRecord.dbId,
+                status: 'error',
+                errors: transcriptUpdateResult.errors.map(e => e.message)
+              }))
+              transcriptStats.failed++
+            } else {
+              transcriptStats.successful++
+              console.log(JSON.stringify({
+                step: 'saveVideos',
+                operation: 'updateTranscript',
+                videoYoutubeId: result.videoYoutubeId,
+                videoId: videoRecord.dbId,
+                status: 'success'
+              }))
+            }
+          } else {
+            transcriptStats.failed++
+            console.log(JSON.stringify({
+              step: 'saveVideos',
+              operation: 'updateTranscript',
+              videoYoutubeId: result.videoYoutubeId,
+              status: 'failed',
+              error: result.error
+            }))
+          }
+        }
+      } catch (error) {
+        console.error(JSON.stringify({
+          step: 'saveVideos',
+          operation: 'batchTranscripts',
+          status: 'error',
+          message: error instanceof Error ? error.message : 'Unknown error'
+        }))
+        transcriptStats.failed += newVideos.length
+      }
     }
   }
   

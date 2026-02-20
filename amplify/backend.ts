@@ -10,6 +10,7 @@ import { data } from './data/resource';
 import { storage } from './storage/resource';
 import { fetchChannelVideos } from './functions/fetch-channel-videos/resource';
 import { agentInvoker } from './functions/agent-invoker/resource';
+import { saveTranscript } from './functions/save-transcript/resource';
 import { execSync } from 'child_process';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
@@ -24,6 +25,7 @@ const backend = defineBackend({
   data,
   fetchChannelVideos,
   agentInvoker,
+  saveTranscript,
   storage
 });
 
@@ -146,6 +148,16 @@ storageBucket.grantWrite(fetchLambda, 'transcripts/*');
 
 // Pass the bucket name as an environment variable to the Lambda
 fetchLambda.addEnvironment('TRANSCRIPT_BUCKET_NAME', storageBucket.bucketName);
+
+// Grant the save-transcript Lambda write access to the storage bucket for transcripts
+const saveTranscriptLambda = backend.saveTranscript.resources.lambda as Function;
+storageBucket.grantWrite(saveTranscriptLambda, 'transcripts/*');
+
+// Grant the fetch-channel-videos Lambda permission to invoke the save-transcript Lambda
+saveTranscriptLambda.grantInvoke(fetchLambda);
+
+// Pass the save-transcript Lambda function name to the fetch-channel-videos Lambda
+fetchLambda.addEnvironment('SAVE_TRANSCRIPT_FUNCTION_NAME', saveTranscriptLambda.functionName);
 
 // Export the Runtime ARN as a CfnOutput
 new cdk.CfnOutput(customResourceStack, 'AgentcoreRuntimeArn', {
