@@ -590,22 +590,38 @@ async function upsertChannel(
   }
 }
 
+interface TranscriptStats {
+  successful: number
+  failed: number
+  skipped: number
+}
+
 /**
- * Saves videos to the database with deduplication
+ * Saves videos to the database with deduplication and transcript processing
  * @param videos Array of video metadata objects
  * @param channelId The channel ID to associate videos with
  * @param owner The Cognito user ID (owner)
- * @returns Object with counts of saved and skipped videos
+ * @param apiKey The YouTube API key for fetching captions
+ * @param bucketName The S3 bucket name for storing transcripts
+ * @returns Object with counts of saved and skipped videos, plus transcript stats
  * @throws Error if critical database operations fail
  */
 async function saveVideos(
   videos: YouTubeVideo[],
   channelId: string,
-  owner: string
-): Promise<{ saved: number; skipped: number; failed: number }> {
+  owner: string,
+  apiKey: string,
+  bucketName: string
+): Promise<{ saved: number; skipped: number; failed: number; transcriptStats: TranscriptStats }> {
   let savedCount = 0
   let skippedCount = 0
   let failedCount = 0
+  
+  const transcriptStats: TranscriptStats = {
+    successful: 0,
+    failed: 0,
+    skipped: 0
+  }
   
   for (const video of videos) {
     try {
@@ -624,8 +640,9 @@ async function saveVideos(
       }
       
       if (existingVideos.data && existingVideos.data.length > 0) {
-        // Video already exists, skip it
+        // Video already exists, skip it (and skip transcript fetching)
         skippedCount++
+        transcriptStats.skipped++
         console.log(`Skipped existing video: ${video.youtubeId}`)
         continue
       }
@@ -643,6 +660,34 @@ async function saveVideos(
       if (result.data) {
         savedCount++
         console.log(`Saved new video: ${video.youtubeId}`)
+        
+        // Process transcript for the newly created video
+        const transcriptResult = await processTranscript({
+          videoYoutubeId: video.youtubeId,
+          channelId,
+          owner,
+          apiKey,
+          bucketName
+        })
+        
+        if (transcriptResult.success && transcriptResult.key) {
+          // Update video record with transcript information
+          const updateResult = await client.models.Video.update({
+            id: result.data.id,
+            transcriptKey: transcriptResult.key,
+            transcriptAvailable: true
+          })
+          
+          if (updateResult.errors) {
+            console.error(`Failed to update video ${video.youtubeId} with transcript info:`, updateResult.errors)
+            transcriptStats.failed++
+          } else {
+            transcriptStats.successful++
+            console.log(`Successfully processed transcript for video: ${video.youtubeId}`)
+          }
+        } else {
+          transcriptStats.failed++
+        }
       } else {
         failedCount++
         console.error(`Failed to save video ${video.youtubeId}: No data returned`)
@@ -655,7 +700,10 @@ async function saveVideos(
     }
   }
   
-  return { saved: savedCount, skipped: skippedCount, failed: failedCount }
+  // Log transcript processing summary
+  console.log(`Transcript processing summary: successful=${transcriptStats.successful}, failed=${transcriptStats.failed}, skipped=${transcriptStats.skipped}`)
+  
+  return { saved: savedCount, skipped: skippedCount, failed: failedCount, transcriptStats }
 }
 
 /**
@@ -784,19 +832,38 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     }
     
     // Step 6: Save videos to database with deduplication
-    let saveResults: { saved: number; skipped: number; failed: number }
+    let saveResults: { saved: number; skipped: number; failed: number; transcriptStats: TranscriptStats }
+    let bucketName: string
     try {
-      saveResults = await saveVideos(videos, dbChannelId, owner)
+      bucketName = getTranscriptBucketName()
+    } catch (error) {
+      console.error("Transcript bucket configuration error:", error)
+      return {
+        success: false,
+        message: "Transcript bucket not configured. Please set the TRANSCRIPT_BUCKET_NAME environment variable.",
+        timestamp: new Date().toISOString(),
+        videos: []
+      }
+    }
+    
+    try {
+      saveResults = await saveVideos(videos, dbChannelId, owner, apiKey, bucketName)
       console.log(`Video save results: ${JSON.stringify(saveResults)}`)
     } catch (error) {
       // This shouldn't happen as saveVideos handles errors internally
       console.error("Unexpected error in saveVideos:", error)
-      saveResults = { saved: 0, skipped: 0, failed: videos.length }
+      saveResults = { 
+        saved: 0, 
+        skipped: 0, 
+        failed: videos.length,
+        transcriptStats: { successful: 0, failed: 0, skipped: 0 }
+      }
     }
     
-    // Build success response with descriptive message
+    // Build success response with descriptive message including transcript stats
     const message = `Successfully fetched ${videos.length} videos from channel "${channelName}". ` +
-      `Saved: ${saveResults.saved}, Skipped (duplicates): ${saveResults.skipped}, Failed: ${saveResults.failed}`
+      `Saved: ${saveResults.saved}, Skipped (duplicates): ${saveResults.skipped}, Failed: ${saveResults.failed}. ` +
+      `Transcripts - Successful: ${saveResults.transcriptStats.successful}, Failed: ${saveResults.transcriptStats.failed}, Skipped: ${saveResults.transcriptStats.skipped}`
     
     return {
       success: true,
