@@ -1,8 +1,13 @@
 import json
+import logging
 import boto3
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 from typing import Any, Dict, List
+
+# Configure logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -25,11 +30,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         ]
     }
     """
+    logger.info(f"Handler invoked with {len(event.get('videoYoutubeIds', []))} video(s)")
+    
     # Validate required fields
     required_fields = ['videoYoutubeIds', 'owner', 'channelId', 'bucketName']
     missing_fields = [field for field in required_fields if field not in event]
     
     if missing_fields:
+        logger.error(f"Missing required fields: {missing_fields}")
         return {
             'statusCode': 400,
             'body': json.dumps({
@@ -42,8 +50,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     channel_id = event['channelId']
     bucket_name = event['bucketName']
     
+    logger.info(f"Processing transcripts for channel {channel_id}, owner {owner}, bucket {bucket_name}")
+    
     # Handle empty video list
     if not video_youtube_ids:
+        logger.info("No videos to process")
         return {'results': []}
     
     # Initialize S3 client
@@ -52,6 +63,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Process each video
     results = []
     for video_id in video_youtube_ids:
+        logger.info(f"Processing video {video_id}")
         result = process_video_transcript(
             video_id=video_id,
             owner=owner,
@@ -60,6 +72,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             s3_client=s3_client
         )
         results.append(result)
+    
+    success_count = sum(1 for r in results if r.get('success'))
+    logger.info(f"Completed processing: {success_count}/{len(results)} successful")
     
     return {'results': results}
 
@@ -78,15 +93,17 @@ def process_video_transcript(
     """
     try:
         # Fetch transcript segments
-        transcript_segments = YouTubeTranscriptApi.get_transcript(video_id)
-        
-        # Concatenate segment texts
-        transcript_text = concatenate_segments(transcript_segments)
+        logger.debug(f"Fetching transcript for video {video_id}")
+        ytt = YouTubeTranscriptApi()
+        transcript_segments = ytt.fetch(video_id)
+        transcript_text = " ".join(entry.text for entry in transcript_segments)
+        logger.debug(f"Transcript length for {video_id}: {len(transcript_text)} characters")
         
         # Build S3 key
         s3_key = build_s3_key(owner, channel_id, video_id)
         
         # Upload to S3
+        logger.debug(f"Uploading transcript to s3://{bucket_name}/{s3_key}")
         s3_client.put_object(
             Bucket=bucket_name,
             Key=s3_key,
@@ -94,6 +111,7 @@ def process_video_transcript(
             ContentType='text/plain; charset=utf-8'
         )
         
+        logger.info(f"Successfully saved transcript for video {video_id}")
         return {
             'videoYoutubeId': video_id,
             'success': True,
@@ -101,12 +119,14 @@ def process_video_transcript(
         }
         
     except TranscriptsDisabled:
+        logger.warning(f"Transcripts disabled for video {video_id}")
         return {
             'videoYoutubeId': video_id,
             'success': False,
             'error': 'Transcripts disabled'
         }
     except NoTranscriptFound:
+        logger.warning(f"No transcript found for video {video_id}")
         return {
             'videoYoutubeId': video_id,
             'success': False,
@@ -117,21 +137,15 @@ def process_video_transcript(
         error_message = str(e)
         if 'S3' in type(e).__name__ or 'Bucket' in error_message:
             error_message = f'S3 upload failed: {error_message}'
+            logger.error(f"S3 upload failed for video {video_id}: {error_message}")
+        else:
+            logger.error(f"Unexpected error processing video {video_id}: {error_message}")
         
         return {
             'videoYoutubeId': video_id,
             'success': False,
             'error': error_message
         }
-
-
-def concatenate_segments(segments: List[Dict[str, Any]]) -> str:
-    """
-    Concatenate transcript segments into a single plain-text string.
-    
-    Each segment has a 'text' field containing the caption text.
-    """
-    return ' '.join(segment['text'] for segment in segments)
 
 
 def build_s3_key(owner: str, channel_id: str, video_youtube_id: str) -> str:
