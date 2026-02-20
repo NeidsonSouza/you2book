@@ -1,7 +1,5 @@
-// External libraries
-import axios from "axios"
-import { google } from "googleapis"
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
+// Node.js built-ins
+import crypto from "crypto"
 
 // AWS Amplify SDK
 import { Amplify } from "aws-amplify"
@@ -11,9 +9,9 @@ import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtim
 // Local modules
 import type { Schema } from "../../data/resource"
 import { env } from "$amplify/env/fetch-channel-videos"
-
-// Module-level S3 client singleton
-const s3Client = new S3Client({})
+import { extractChannelId } from "./url-parser"
+import { fetchChannelMetadata, fetchAllVideos, type YouTubeVideo } from "./youtube-api"
+import { upsertChannel, saveVideos, type TranscriptStats } from "./database"
 
 // Configure Amplify for Lambda environment using the official helper
 const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env)
@@ -43,7 +41,8 @@ function getYouTubeApiKey(): string {
  * @throws Error if the bucket name is not configured
  */
 function getTranscriptBucketName(): string {
-  const bucketName = env.TRANSCRIPT_BUCKET_NAME
+  // TRANSCRIPT_BUCKET_NAME is added dynamically via CDK in backend.ts
+  const bucketName = (env as { TRANSCRIPT_BUCKET_NAME?: string }).TRANSCRIPT_BUCKET_NAME
   
   if (!bucketName) {
     throw new Error("Transcript bucket name not configured")
@@ -53,667 +52,14 @@ function getTranscriptBucketName(): string {
 }
 
 /**
- * Strips SRT formatting from caption content to produce clean plain text
- * Removes sequence numbers, timestamp lines, and HTML tags
- * @param srtContent The raw SRT-formatted caption content
- * @returns Clean plain text without timestamps or formatting
- */
-function stripSrtTimestamps(srtContent: string): string {
-  // Split into lines for processing
-  const lines = srtContent.split('\n')
-  const cleanLines: string[] = []
-  
-  for (const line of lines) {
-    const trimmedLine = line.trim()
-    
-    // Skip empty lines (we'll add them back strategically later)
-    if (trimmedLine === '') {
-      continue
-    }
-    
-    // Skip sequence numbers (lines that are just digits)
-    if (/^\d+$/.test(trimmedLine)) {
-      continue
-    }
-    
-    // Skip timestamp lines (format: 00:00:00,000 --> 00:00:01,000)
-    if (/\d{2}:\d{2}:\d{2}/.test(trimmedLine)) {
-      continue
-    }
-    
-    // Remove HTML-like tags and keep the text content
-    const withoutTags = trimmedLine.replace(/<[^>]+>/g, '')
-    
-    // Only add non-empty lines after tag removal
-    if (withoutTags.trim() !== '') {
-      cleanLines.push(withoutTags.trim())
-    }
-  }
-  
-  // Join lines with single line breaks and trim the result
-  return cleanLines.join('\n').trim()
-}
-
-interface CaptionTrack {
-  id: string
-  snippet: {
-    language: string
-    trackKind?: string
-  }
-}
-
-/**
- * Selects the preferred caption track from an array of available tracks
- * Prefers English tracks, falls back to the first available track
- * @param tracks Array of caption track objects from YouTube API
- * @returns The preferred caption track, or null if the array is empty
- */
-function selectCaptionTrack(tracks: CaptionTrack[]): CaptionTrack | null {
-  // Return null if no tracks available
-  if (!tracks || tracks.length === 0) {
-    return null
-  }
-  
-  // Prefer English track
-  const englishTrack = tracks.find(track => track.snippet.language === 'en')
-  if (englishTrack) {
-    return englishTrack
-  }
-  
-  // Fallback to first available track
-  return tracks[0]
-}
-
-/**
- * Generates the S3 key for storing a video transcript
- * @param owner The Cognito user ID (owner/entity_id)
- * @param channelId The DynamoDB channel record ID
- * @param videoYoutubeId The YouTube video ID
- * @returns The S3 key in format: transcripts/{owner}/{channelId}/{videoYoutubeId}.txt
- */
-function buildTranscriptKey(owner: string, channelId: string, videoYoutubeId: string): string {
-  return `transcripts/${owner}/${channelId}/${videoYoutubeId}.txt`
-}
-
-/**
- * Fetches captions for a YouTube video and returns plain text transcript
- * @param videoYoutubeId The YouTube video ID
- * @param apiKey The YouTube API key
- * @returns Plain text transcript content, or null if no captions available or on error
- */
-async function fetchTranscript(videoYoutubeId: string, apiKey: string): Promise<string | null> {
-  try {
-    console.log(`Fetching captions for video: ${videoYoutubeId}`)
-    
-    // Initialize YouTube API client
-    const youtube = google.youtube({
-      version: 'v3',
-      auth: apiKey
-    })
-    
-    // Step 1: List available caption tracks
-    const captionsListResponse = await youtube.captions.list({
-      part: ['snippet'],
-      videoId: videoYoutubeId
-    })
-    
-    const tracks = captionsListResponse.data.items as CaptionTrack[] | undefined
-    
-    if (!tracks || tracks.length === 0) {
-      console.log(`No captions available for video: ${videoYoutubeId}`)
-      return null
-    }
-    
-    // Step 2: Select the best caption track
-    const selectedTrack = selectCaptionTrack(tracks)
-    
-    if (!selectedTrack) {
-      console.log(`No suitable caption track found for video: ${videoYoutubeId}`)
-      return null
-    }
-    
-    const language = selectedTrack.snippet.language
-    console.log(`Selected caption track for video ${videoYoutubeId}: language=${language}`)
-    
-    // Step 3: Download the caption content in SRT format
-    const captionDownloadResponse = await youtube.captions.download({
-      id: selectedTrack.id,
-      tfmt: 'srt'
-    }, {
-      responseType: 'text'
-    })
-    
-    const srtContent = captionDownloadResponse.data as string
-    
-    // Step 4: Strip timestamps and convert to plain text
-    const plainText = stripSrtTimestamps(srtContent)
-    
-    console.log(`Successfully fetched transcript for video ${videoYoutubeId}: language=${language}, characters=${plainText.length}`)
-    
-    return plainText
-  } catch (error) {
-    // Log error and return null - don't throw to allow processing to continue
-    console.error(`Error fetching transcript for video ${videoYoutubeId}:`, error)
-    return null
-  }
-}
-
-/**
- * Uploads transcript content to S3
- * @param params Object containing bucketName, key, and content
- * @returns Promise that resolves when upload is complete
- */
-async function uploadTranscriptToS3(params: { bucketName: string; key: string; content: string }): Promise<void> {
-  const { bucketName, key, content } = params
-  
-  try {
-    console.log(`Uploading transcript to S3: ${key}`)
-    
-    const command = new PutObjectCommand({
-      Bucket: bucketName,
-      Key: key,
-      Body: content,
-      ContentType: 'text/plain; charset=utf-8'
-    })
-    
-    await s3Client.send(command)
-    
-    console.log(`Successfully uploaded transcript to S3: ${key}`)
-  } catch (error) {
-    console.error(`Error uploading transcript to S3 (key: ${key}):`, error)
-    throw error
-  }
-}
-
-/**
- * Orchestrates the full transcript processing flow for a single video
- * @param params Object containing video metadata and configuration
- * @returns Object with success status and optional S3 key
- */
-async function processTranscript(params: {
-  videoYoutubeId: string
-  channelId: string
-  owner: string
-  apiKey: string
-  bucketName: string
-}): Promise<{ success: boolean; key?: string }> {
-  const { videoYoutubeId, channelId, owner, apiKey, bucketName } = params
-  
-  try {
-    // Step 1: Fetch transcript from YouTube
-    const plainText = await fetchTranscript(videoYoutubeId, apiKey)
-    
-    if (!plainText) {
-      return { success: false }
-    }
-    
-    // Step 2: Build S3 key
-    const key = buildTranscriptKey(owner, channelId, videoYoutubeId)
-    
-    // Step 3: Upload to S3
-    await uploadTranscriptToS3({ bucketName, key, content: plainText })
-    
-    return { success: true, key }
-  } catch (error) {
-    console.error(`Error processing transcript for video ${videoYoutubeId}:`, error)
-    return { success: false }
-  }
-}
-
-/**
- * Extracts the YouTube channel ID from various URL formats
- * Supports: /channel/{ID}, /@{handle}, /c/{custom}, /user/{username}
- * @param url The YouTube channel URL
- * @returns The extracted channel ID or handle
- * @throws Error if the URL format is invalid
- */
-function extractChannelId(url: string): string {
-  try {
-    const urlObj = new URL(url)
-    
-    // Validate it's a YouTube URL
-    if (!urlObj.hostname.includes('youtube.com')) {
-      throw new Error("Not a valid YouTube URL")
-    }
-    
-    const pathname = urlObj.pathname
-    
-    // Handle /channel/{CHANNEL_ID} format
-    const channelMatch = pathname.match(/^\/channel\/([^/]+)/)
-    if (channelMatch) {
-      return channelMatch[1]
-    }
-    
-    // Handle /@{HANDLE} format
-    const handleMatch = pathname.match(/^\/@([^/]+)/)
-    if (handleMatch) {
-      return `@${handleMatch[1]}`
-    }
-    
-    // Handle /c/{CUSTOM_URL} format
-    const customMatch = pathname.match(/^\/c\/([^/]+)/)
-    if (customMatch) {
-      return customMatch[1]
-    }
-    
-    // Handle /user/{USERNAME} format
-    const userMatch = pathname.match(/^\/user\/([^/]+)/)
-    if (userMatch) {
-      return userMatch[1]
-    }
-    
-    throw new Error("URL does not match any supported YouTube channel format")
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error("Invalid YouTube channel URL format")
-    }
-    throw error
-  }
-}
-
-/**
- * Fetches channel metadata from YouTube API
- * @param channelId The YouTube channel ID or handle
- * @param apiKey The YouTube API key
- * @returns The channel name
- * @throws Error if the channel is not found or API call fails
- */
-async function fetchChannelMetadata(channelId: string, apiKey: string): Promise<string> {
-  try {
-    const baseUrl = 'https://www.googleapis.com/youtube/v3/channels'
-    let params: Record<string, string>
-
-    // Determine how to look up the channel based on the identifier format
-    if (channelId.startsWith('UC')) {
-      // It's already a channel ID
-      params = {
-        part: 'snippet',
-        id: channelId,
-        key: apiKey
-      }
-    } else if (channelId.startsWith('@')) {
-      // It's a handle - use forHandle parameter (without the @ symbol)
-      params = {
-        part: 'snippet',
-        forHandle: channelId.substring(1),
-        key: apiKey
-      }
-    } else {
-      // It's a custom URL or username - use forUsername parameter
-      params = {
-        part: 'snippet',
-        forUsername: channelId,
-        key: apiKey
-      }
-    }
-
-    console.log('Fetching channel metadata with params:', params)
-    const response = await axios.get(baseUrl, { params })
-
-    if (!response.data.items || response.data.items.length === 0) {
-      throw new Error(`Channel not found: ${channelId}`)
-    }
-
-    const channelName = response.data.items[0].snippet.title
-    return channelName
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const status = error.response?.status
-      const errorData = error.response?.data
-
-      console.error('YouTube API Error in fetchChannelMetadata:', {
-        status,
-        statusText: error.response?.statusText,
-        data: errorData,
-        url: error.config?.url,
-        params: error.config?.params,
-        channelId
-      })
-
-      if (status === 404) {
-        throw new Error(`Channel not found: ${channelId}`)
-      } else if (status === 403) {
-        throw new Error('YouTube API access forbidden - check API key and quota')
-      } else if (status === 400) {
-        const errorMessage = errorData?.error?.message || 'Invalid request'
-        throw new Error(`Bad request for channel ${channelId}: ${errorMessage}`)
-      } else if (status && status >= 500) {
-        throw new Error('YouTube API service error - please try again later')
-      }
-
-      throw new Error(`YouTube API error: ${error.message}`)
-    }
-
-    throw error
-  }
-}
-
-interface YouTubeVideo {
-  youtubeId: string
-  title: string
-  description: string
-  duration: string
-}
-
-/**
- * Fetches all videos from a YouTube channel with pagination
- * @param channelId The YouTube channel ID
- * @param apiKey The YouTube API key
- * @returns Array of video metadata objects
- * @throws Error if API calls fail
- */
-async function fetchAllVideos(channelId: string, apiKey: string): Promise<YouTubeVideo[]> {
-  try {
-    const allVideos: YouTubeVideo[] = []
-    let nextPageToken: string | undefined = undefined
-
-    // Resolve channelId to actual channel ID if it's not already one
-    let actualChannelId = channelId
-
-    // Channel IDs start with "UC" - if it doesn't, we need to resolve it
-    if (!channelId.startsWith('UC')) {
-      const channelsUrl = 'https://www.googleapis.com/youtube/v3/channels'
-      let channelParams: Record<string, string>
-
-      if (channelId.startsWith('@')) {
-        // It's a handle - use forHandle parameter (without the @ symbol)
-        channelParams = {
-          part: 'id',
-          forHandle: channelId.substring(1),
-          key: apiKey
-        }
-      } else {
-        // It's a custom URL or username - use forUsername parameter
-        channelParams = {
-          part: 'id',
-          forUsername: channelId,
-          key: apiKey
-        }
-      }
-
-      const channelResponse = await axios.get(channelsUrl, { params: channelParams })
-
-      if (!channelResponse.data.items || channelResponse.data.items.length === 0) {
-        throw new Error(`Channel not found for identifier: ${channelId}`)
-      }
-
-      actualChannelId = channelResponse.data.items[0].id
-    }
-
-    // Paginate through all videos
-    do {
-      // Step 1: Get video IDs from search.list
-      const searchUrl = 'https://www.googleapis.com/youtube/v3/search'
-      const searchParams: Record<string, string | number> = {
-        part: 'id',
-        channelId: actualChannelId,
-        type: 'video',
-        maxResults: 50,
-        order: 'date',
-        key: apiKey
-      }
-
-      if (nextPageToken) {
-        searchParams.pageToken = nextPageToken
-      }
-
-      const searchResponse = await axios.get(searchUrl, { params: searchParams })
-
-      if (!searchResponse.data.items || searchResponse.data.items.length === 0) {
-        break // No more videos
-      }
-
-      // Extract video IDs
-      const videoIds = searchResponse.data.items
-        .map((item: { id: { videoId: string } }) => item.id.videoId)
-        .filter((id: string) => id) // Filter out any undefined IDs
-
-      if (videoIds.length === 0) {
-        break
-      }
-
-      // Step 2: Get video details from videos.list
-      const videosUrl = 'https://www.googleapis.com/youtube/v3/videos'
-      const videosParams = {
-        part: 'snippet,contentDetails',
-        id: videoIds.join(','),
-        key: apiKey
-      }
-
-      const videosResponse = await axios.get(videosUrl, { params: videosParams })
-
-      if (videosResponse.data.items) {
-        for (const item of videosResponse.data.items) {
-          allVideos.push({
-            youtubeId: item.id,
-            title: item.snippet.title,
-            description: item.snippet.description || '',
-            duration: item.contentDetails.duration
-          })
-        }
-      }
-
-      // Get next page token
-      nextPageToken = searchResponse.data.nextPageToken
-
-    } while (nextPageToken)
-
-    return allVideos
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const status = error.response?.status
-
-      if (status === 404) {
-        throw new Error(`Channel not found: ${channelId}`)
-      } else if (status === 403) {
-        throw new Error('YouTube API access forbidden - check API key and quota')
-      } else if (status === 400) {
-        throw new Error(`Invalid request parameters for channel: ${channelId}`)
-      } else if (status && status >= 500) {
-        throw new Error('YouTube API service error - please try again later')
-      }
-
-      throw new Error(`YouTube API error: ${error.message}`)
-    }
-
-    throw error
-  }
-}
-
-/**
- * Creates or updates a channel record in the database
- * @param channelData Object containing channel information
- * @param owner The Cognito user ID (owner)
- * @returns The channel ID
- * @throws Error if database operations fail
- */
-async function upsertChannel(
-  channelData: { name: string; url: string; youtubeChannelId: string },
-  owner: string
-): Promise<string> {
-  try {
-    // Query for existing channel by youtubeChannelId
-    console.log('Querying for existing channel:', { youtubeChannelId: channelData.youtubeChannelId, owner })
-    const existingChannels = await client.models.Channel.list({
-      filter: { 
-        youtubeChannelId: { eq: channelData.youtubeChannelId },
-        owner: { eq: owner }
-      }
-    })
-    
-    if (existingChannels.errors) {
-      console.error('Channel list query errors:', JSON.stringify(existingChannels.errors))
-      throw new Error('Failed to query channels: ' + existingChannels.errors.map(e => e.message).join(', '))
-    }
-    
-    if (existingChannels.data && existingChannels.data.length > 0) {
-      // Update existing channel name
-      const channelId = existingChannels.data[0].id
-      const updateResult = await client.models.Channel.update({
-        id: channelId,
-        name: channelData.name,
-      })
-      
-      if (updateResult.errors) {
-        console.error('Channel update errors:', JSON.stringify(updateResult.errors))
-        throw new Error('Failed to update channel: ' + updateResult.errors.map(e => e.message).join(', '))
-      }
-      
-      console.log(`Updated existing channel: ${channelId}`)
-      return channelId
-    } else {
-      // Create new channel
-      console.log('Creating new channel:', { ...channelData, owner })
-      const result = await client.models.Channel.create({
-        name: channelData.name,
-        url: channelData.url,
-        youtubeChannelId: channelData.youtubeChannelId,
-        owner: owner,
-      })
-      
-      if (result.errors) {
-        console.error('Channel create errors:', JSON.stringify(result.errors))
-        throw new Error('Failed to create channel: ' + result.errors.map(e => e.message).join(', '))
-      }
-      
-      if (!result.data) {
-        throw new Error('Failed to create channel - no data returned')
-      }
-      
-      console.log(`Created new channel: ${result.data.id}`)
-      return result.data.id
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : JSON.stringify(error)
-    console.error('Failed to upsert channel:', errorMessage)
-    throw new Error(`Database error: ${errorMessage}`)
-  }
-}
-
-interface TranscriptStats {
-  successful: number
-  failed: number
-  skipped: number
-}
-
-/**
- * Saves videos to the database with deduplication and transcript processing
- * @param videos Array of video metadata objects
- * @param channelId The channel ID to associate videos with
- * @param owner The Cognito user ID (owner)
- * @param apiKey The YouTube API key for fetching captions
- * @param bucketName The S3 bucket name for storing transcripts
- * @returns Object with counts of saved and skipped videos, plus transcript stats
- * @throws Error if critical database operations fail
- */
-async function saveVideos(
-  videos: YouTubeVideo[],
-  channelId: string,
-  owner: string,
-  apiKey: string,
-  bucketName: string
-): Promise<{ saved: number; skipped: number; failed: number; transcriptStats: TranscriptStats }> {
-  let savedCount = 0
-  let skippedCount = 0
-  let failedCount = 0
-  
-  const transcriptStats: TranscriptStats = {
-    successful: 0,
-    failed: 0,
-    skipped: 0
-  }
-  
-  for (const video of videos) {
-    try {
-      // Query for existing video by youtubeId
-      const existingVideos = await client.models.Video.list({
-        filter: { 
-          youtubeId: { eq: video.youtubeId },
-          owner: { eq: owner }
-        }
-      })
-
-      if (existingVideos.errors) {
-        console.error(`Error querying existing video ${video.youtubeId}:`, existingVideos.errors)
-        failedCount++
-        continue
-      }
-      
-      if (existingVideos.data && existingVideos.data.length > 0) {
-        // Video already exists, skip it (and skip transcript fetching)
-        skippedCount++
-        transcriptStats.skipped++
-        console.log(`Skipped existing video: ${video.youtubeId}`)
-        continue
-      }
-      
-      // Create new video
-      const result = await client.models.Video.create({
-        youtubeId: video.youtubeId,
-        title: video.title,
-        description: video.description || '',
-        duration: video.duration,
-        channelId: channelId,
-        owner: owner,
-      })
-      
-      if (result.data) {
-        savedCount++
-        console.log(`Saved new video: ${video.youtubeId}`)
-        
-        // Process transcript for the newly created video
-        const transcriptResult = await processTranscript({
-          videoYoutubeId: video.youtubeId,
-          channelId,
-          owner,
-          apiKey,
-          bucketName
-        })
-        
-        if (transcriptResult.success && transcriptResult.key) {
-          // Update video record with transcript information
-          const updateResult = await client.models.Video.update({
-            id: result.data.id,
-            transcriptKey: transcriptResult.key,
-            transcriptAvailable: true
-          })
-          
-          if (updateResult.errors) {
-            console.error(`Failed to update video ${video.youtubeId} with transcript info:`, updateResult.errors)
-            transcriptStats.failed++
-          } else {
-            transcriptStats.successful++
-            console.log(`Successfully processed transcript for video: ${video.youtubeId}`)
-          }
-        } else {
-          transcriptStats.failed++
-        }
-      } else {
-        failedCount++
-        console.error(`Failed to save video ${video.youtubeId}: No data returned`)
-      }
-    } catch (error) {
-      // Handle individual save failures gracefully - log and continue
-      failedCount++
-      console.error(`Failed to save video ${video.youtubeId}:`, error)
-      // Continue processing remaining videos
-    }
-  }
-  
-  // Log transcript processing summary
-  console.log(`Transcript processing summary: successful=${transcriptStats.successful}, failed=${transcriptStats.failed}, skipped=${transcriptStats.skipped}`)
-  
-  return { saved: savedCount, skipped: skippedCount, failed: failedCount, transcriptStats }
-}
-
-/**
  * Main handler function for fetching channel videos
  * Orchestrates the entire flow: API key retrieval → URL parsing → channel fetch → video fetch → database operations
  * @param event The Lambda event containing channelUrl and user identity
  * @returns Response object with success status, message, timestamp, and videos
  */
 export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (event) => {
-  // Generate ISO 8601 timestamp at the start
+  // Generate correlation ID and timestamp at the start
+  const correlationId = crypto.randomUUID()
   const timestamp = new Date().toISOString()
   
   try {
@@ -723,7 +69,12 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     
     // Validate user authentication
     if (!owner) {
-      console.error("Authentication error: User identity not found")
+      console.error(JSON.stringify({
+        correlationId,
+        step: 'validateAuth',
+        status: 'error',
+        message: 'User identity not found'
+      }))
       return {
         success: false,
         message: "User identity not found - authentication required",
@@ -732,14 +83,25 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
       }
     }
     
-    console.log(`Processing channel URL: ${channelUrl} for user: ${owner}`)
+    console.log(JSON.stringify({
+      correlationId,
+      step: 'start',
+      channelUrl,
+      owner,
+      status: 'processing'
+    }))
     
     // Step 1: Get YouTube API key from environment
     let apiKey: string
     try {
       apiKey = getYouTubeApiKey()
     } catch (error) {
-      console.error("API key configuration error:", error)
+      console.error(JSON.stringify({
+        correlationId,
+        step: 'getApiKey',
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      }))
       return {
         success: false,
         message: "YouTube API key not configured. Please set the YOUTUBE_API_KEY secret.",
@@ -752,9 +114,20 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     let channelId: string
     try {
       channelId = extractChannelId(channelUrl)
-      console.log(`Extracted channel ID: ${channelId}`)
+      console.log(JSON.stringify({
+        correlationId,
+        step: 'extractChannelId',
+        channelId,
+        status: 'success'
+      }))
     } catch (error) {
-      console.error("URL parsing error:", error)
+      console.error(JSON.stringify({
+        correlationId,
+        step: 'extractChannelId',
+        channelUrl,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Invalid URL format'
+      }))
       const errorMessage = error instanceof Error ? error.message : "Invalid URL format"
       return {
         success: false,
@@ -768,9 +141,21 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     let channelName: string
     try {
       channelName = await fetchChannelMetadata(channelId, apiKey)
-      console.log(`Fetched channel metadata: ${channelName}`)
+      console.log(JSON.stringify({
+        correlationId,
+        step: 'fetchChannelMetadata',
+        channelId,
+        channelName,
+        status: 'success'
+      }))
     } catch (error) {
-      console.error("Channel metadata fetch error:", error)
+      console.error(JSON.stringify({
+        correlationId,
+        step: 'fetchChannelMetadata',
+        channelId,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Failed to fetch channel metadata'
+      }))
       const errorMessage = error instanceof Error ? error.message : "Failed to fetch channel metadata"
       return {
         success: false,
@@ -783,22 +168,22 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     // Step 4: Fetch all videos from the channel
     let videos: YouTubeVideo[]
     try {
-      console.log(`About to fetch videos for channelId: ${channelId}`)
       videos = await fetchAllVideos(channelId, apiKey)
-      console.log(`Fetched ${videos.length} videos from channel`)
+      console.log(JSON.stringify({
+        correlationId,
+        step: 'fetchAllVideos',
+        channelId,
+        videoCount: videos.length,
+        status: 'success'
+      }))
     } catch (error) {
-      console.error("Video fetch error:", error)
-      if (axios.isAxiosError(error)) {
-        console.error("Axios error details:", {
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          data: error.response?.data,
-          config: {
-            url: error.config?.url,
-            params: error.config?.params
-          }
-        })
-      }
+      console.error(JSON.stringify({
+        correlationId,
+        step: 'fetchAllVideos',
+        channelId,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Failed to fetch videos'
+      }))
       const errorMessage = error instanceof Error ? error.message : "Failed to fetch videos"
       return {
         success: false,
@@ -812,6 +197,7 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     let dbChannelId: string
     try {
       dbChannelId = await upsertChannel(
+        client,
         {
           name: channelName,
           url: channelUrl,
@@ -819,9 +205,22 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
         },
         owner
       )
-      console.log(`Channel upserted with ID: ${dbChannelId}`)
+      console.log(JSON.stringify({
+        correlationId,
+        step: 'upsertChannel',
+        channelId,
+        dbChannelId,
+        channelName,
+        status: 'success'
+      }))
     } catch (error) {
-      console.error("Channel upsert error:", error)
+      console.error(JSON.stringify({
+        correlationId,
+        step: 'upsertChannel',
+        channelId,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Failed to save channel'
+      }))
       const errorMessage = error instanceof Error ? error.message : "Failed to save channel"
       return {
         success: false,
@@ -837,7 +236,12 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     try {
       bucketName = getTranscriptBucketName()
     } catch (error) {
-      console.error("Transcript bucket configuration error:", error)
+      console.error(JSON.stringify({
+        correlationId,
+        step: 'getTranscriptBucketName',
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Transcript bucket not configured'
+      }))
       return {
         success: false,
         message: "Transcript bucket not configured. Please set the TRANSCRIPT_BUCKET_NAME environment variable.",
@@ -847,11 +251,26 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     }
     
     try {
-      saveResults = await saveVideos(videos, dbChannelId, owner, apiKey, bucketName)
-      console.log(`Video save results: ${JSON.stringify(saveResults)}`)
+      saveResults = await saveVideos(client, videos, dbChannelId, owner, apiKey, bucketName)
+      console.log(JSON.stringify({
+        correlationId,
+        step: 'saveVideos',
+        dbChannelId,
+        saved: saveResults.saved,
+        skipped: saveResults.skipped,
+        failed: saveResults.failed,
+        transcriptStats: saveResults.transcriptStats,
+        status: 'success'
+      }))
     } catch (error) {
       // This shouldn't happen as saveVideos handles errors internally
-      console.error("Unexpected error in saveVideos:", error)
+      console.error(JSON.stringify({
+        correlationId,
+        step: 'saveVideos',
+        dbChannelId,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unexpected error in saveVideos'
+      }))
       saveResults = { 
         saved: 0, 
         skipped: 0, 
@@ -878,7 +297,12 @@ export const handler: Schema["fetchChannelVideos"]["functionHandler"] = async (e
     }
   } catch (error) {
     // Catch-all for any unexpected errors
-    console.error("Unexpected handler error:", error)
+    console.error(JSON.stringify({
+      correlationId,
+      step: 'handler',
+      status: 'error',
+      message: error instanceof Error ? error.message : 'An unexpected error occurred'
+    }))
     
     const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred"
     

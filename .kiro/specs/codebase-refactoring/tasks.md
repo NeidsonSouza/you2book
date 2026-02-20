@@ -6,47 +6,47 @@ Refactor the You2Book codebase for improved maintainability, debuggability, and 
 
 ## Tasks
 
-- [ ] 1. Extract pure utility modules from the Lambda handler
-  - [ ] 1.1 Create `amplify/functions/fetch-channel-videos/srt-parser.ts` — move `stripSrtTimestamps` function and its logic out of `handler.ts`, export it as the sole public function
+- [x] 1. Extract pure utility modules from the Lambda handler
+  - [x] 1.1 Create `amplify/functions/fetch-channel-videos/srt-parser.ts` — move `stripSrtTimestamps` function and its logic out of `handler.ts`, export it as the sole public function
     - _Requirements: 1.1, 1.4_
-  - [ ] 1.2 Create `amplify/functions/fetch-channel-videos/url-parser.ts` — move `extractChannelId` function out of `handler.ts`, export it
+  - [x] 1.2 Create `amplify/functions/fetch-channel-videos/url-parser.ts` — move `extractChannelId` function out of `handler.ts`, export it
     - _Requirements: 1.1, 1.3_
-  - [ ] 1.3 Update `handler.ts` to import `stripSrtTimestamps` from `srt-parser.ts` and `extractChannelId` from `url-parser.ts`, remove the inlined versions
+  - [x] 1.3 Update `handler.ts` to import `stripSrtTimestamps` from `srt-parser.ts` and `extractChannelId` from `url-parser.ts`, remove the inlined versions
     - _Requirements: 1.2, 1.3_
 
-- [ ] 2. Add tests for extracted pure functions
-  - [ ] 2.1 Create `amplify/functions/fetch-channel-videos/srt-parser.test.ts` — unit tests for `stripSrtTimestamps` covering: standard SRT input, empty input, input with only timestamps, input with HTML tags, input with no SRT formatting
+- [x] 2. Add tests for extracted pure functions
+  - [x] 2.1 Create `amplify/functions/fetch-channel-videos/srt-parser.test.ts` — unit tests for `stripSrtTimestamps` covering: standard SRT input, empty input, input with only timestamps, input with HTML tags, input with no SRT formatting
     - _Requirements: 6.3_
   - [ ]* 2.2 Add property test for SRT parser output cleanliness in `srt-parser.test.ts`
     - **Property 1: SRT parser output cleanliness**
     - **Validates: Requirements 6.5**
-  - [ ] 2.3 Create `amplify/functions/fetch-channel-videos/url-parser.test.ts` — unit tests for `extractChannelId` covering: `/channel/{ID}`, `/@{handle}`, `/c/{custom}`, `/user/{username}` formats, invalid URLs, non-YouTube URLs
+  - [x] 2.3 Create `amplify/functions/fetch-channel-videos/url-parser.test.ts` — unit tests for `extractChannelId` covering: `/channel/{ID}`, `/@{handle}`, `/c/{custom}`, `/user/{username}` formats, invalid URLs, non-YouTube URLs
     - _Requirements: 6.4_
   - [ ]* 2.4 Add property test for channel URL parser in `url-parser.test.ts`
     - **Property 2: Channel URL parser produces non-empty identifiers**
     - **Validates: Requirements 6.6**
 
-- [ ] 3. Checkpoint — Ensure all tests pass
+- [x] 3. Checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Extract remaining Lambda handler modules
-  - [ ] 4.1 Create `amplify/functions/fetch-channel-videos/youtube-api.ts` — move `fetchChannelMetadata`, `fetchAllVideos`, `fetchTranscript`, `selectCaptionTrack`, and related interfaces (`YouTubeVideo`, `CaptionTrack`) out of `handler.ts`
+- [x] 4. Extract remaining Lambda handler modules
+  - [x] 4.1 Create `amplify/functions/fetch-channel-videos/youtube-api.ts` — move `fetchChannelMetadata`, `fetchAllVideos`, `fetchTranscript`, `selectCaptionTrack`, and related interfaces (`YouTubeVideo`, `CaptionTrack`) out of `handler.ts`
     - _Requirements: 1.1, 1.3_
-  - [ ] 4.2 Create `amplify/functions/fetch-channel-videos/transcript.ts` — move `processTranscript`, `uploadTranscriptToS3`, `buildTranscriptKey` out of `handler.ts`, import `fetchTranscript` from `youtube-api.ts` and `stripSrtTimestamps` from `srt-parser.ts`
+  - [x] 4.2 Create `amplify/functions/fetch-channel-videos/transcript.ts` — move `processTranscript`, `uploadTranscriptToS3`, `buildTranscriptKey` out of `handler.ts`, import `fetchTranscript` from `youtube-api.ts` and `stripSrtTimestamps` from `srt-parser.ts`
     - _Requirements: 1.1, 1.3_
-  - [ ] 4.3 Create `amplify/functions/fetch-channel-videos/database.ts` — move `upsertChannel`, `saveVideos`, and related interfaces (`TranscriptStats`, `SaveVideosResult`) out of `handler.ts`, accept the Amplify client as a parameter
+  - [x] 4.3 Create `amplify/functions/fetch-channel-videos/database.ts` — move `upsertChannel`, `saveVideos`, and related interfaces (`TranscriptStats`, `SaveVideosResult`) out of `handler.ts`, accept the Amplify client as a parameter
     - _Requirements: 1.1, 1.3_
-  - [ ] 4.4 Refactor `handler.ts` to be orchestration-only — import from all extracted modules, keep only the `handler` export, `getYouTubeApiKey`, `getTranscriptBucketName`, and Amplify client initialization
+  - [x] 4.4 Refactor `handler.ts` to be orchestration-only — import from all extracted modules, keep only the `handler` export, `getYouTubeApiKey`, `getTranscriptBucketName`, and Amplify client initialization
     - _Requirements: 1.2, 1.3_
 
-- [ ] 5. Add structured logging to the Lambda handler
-  - [ ] 5.1 Add a correlation ID (using `crypto.randomUUID()`) at the start of the handler, pass it through to log statements
+- [x] 5. Add structured logging to the Lambda handler
+  - [x] 5.1 Add a correlation ID (using `crypto.randomUUID()`) at the start of the handler, pass it through to log statements
     - _Requirements: 2.4, 4.1_
-  - [ ] 5.2 Update all `console.log` and `console.error` calls in `handler.ts` and extracted modules to use `JSON.stringify` with structured fields: `correlationId`, `step`, entity identifiers, and `status`
+  - [x] 5.2 Update all `console.log` and `console.error` calls in `handler.ts` and extracted modules to use `JSON.stringify` with structured fields: `correlationId`, `step`, entity identifiers, and `status`
     - _Requirements: 4.1, 4.2, 4.3_
-  - [ ] 5.3 Update error handling in each module to include operation name and entity identifiers in error messages
+  - [x] 5.3 Update error handling in each module to include operation name and entity identifiers in error messages
     - _Requirements: 2.1, 2.2, 2.3_
-  - [ ] 5.4 Ensure no log statement includes the full API key value — log only a masked version or omit it entirely
+  - [x] 5.4 Ensure no log statement includes the full API key value — log only a masked version or omit it entirely
     - _Requirements: 4.4_
 
 - [ ] 6. Checkpoint — Ensure all tests pass
