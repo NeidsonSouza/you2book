@@ -139,6 +139,14 @@ runtime.grantInvoke(agentInvokerLambda);
 // Pass the Runtime ARN to the agent-invoker Lambda as an environment variable
 agentInvokerLambda.addEnvironment('AGENT_RUNTIME_ARN', runtime.agentRuntimeArn);
 
+// Grant the fetch-channel-videos Lambda write access to the storage bucket for transcripts
+const storageBucket = backend.storage.resources.bucket;
+const fetchLambda = backend.fetchChannelVideos.resources.lambda as Function;
+storageBucket.grantWrite(fetchLambda, 'transcripts/*');
+
+// Pass the bucket name as an environment variable to the Lambda
+fetchLambda.addEnvironment('TRANSCRIPT_BUCKET_NAME', storageBucket.bucketName);
+
 // Export the Runtime ARN as a CfnOutput
 new cdk.CfnOutput(customResourceStack, 'AgentcoreRuntimeArn', {
   value: runtime.agentRuntimeArn,

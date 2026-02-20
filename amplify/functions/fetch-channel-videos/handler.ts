@@ -33,6 +33,89 @@ function getYouTubeApiKey(): string {
 }
 
 /**
+ * Strips SRT formatting from caption content to produce clean plain text
+ * Removes sequence numbers, timestamp lines, and HTML tags
+ * @param srtContent The raw SRT-formatted caption content
+ * @returns Clean plain text without timestamps or formatting
+ */
+function stripSrtTimestamps(srtContent: string): string {
+  // Split into lines for processing
+  const lines = srtContent.split('\n')
+  const cleanLines: string[] = []
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim()
+    
+    // Skip empty lines (we'll add them back strategically later)
+    if (trimmedLine === '') {
+      continue
+    }
+    
+    // Skip sequence numbers (lines that are just digits)
+    if (/^\d+$/.test(trimmedLine)) {
+      continue
+    }
+    
+    // Skip timestamp lines (format: 00:00:00,000 --> 00:00:01,000)
+    if (/\d{2}:\d{2}:\d{2}/.test(trimmedLine)) {
+      continue
+    }
+    
+    // Remove HTML-like tags and keep the text content
+    const withoutTags = trimmedLine.replace(/<[^>]+>/g, '')
+    
+    // Only add non-empty lines after tag removal
+    if (withoutTags.trim() !== '') {
+      cleanLines.push(withoutTags.trim())
+    }
+  }
+  
+  // Join lines with single line breaks and trim the result
+  return cleanLines.join('\n').trim()
+}
+
+interface CaptionTrack {
+  id: string
+  snippet: {
+    language: string
+    trackKind?: string
+  }
+}
+
+/**
+ * Selects the preferred caption track from an array of available tracks
+ * Prefers English tracks, falls back to the first available track
+ * @param tracks Array of caption track objects from YouTube API
+ * @returns The preferred caption track, or null if the array is empty
+ */
+function selectCaptionTrack(tracks: CaptionTrack[]): CaptionTrack | null {
+  // Return null if no tracks available
+  if (!tracks || tracks.length === 0) {
+    return null
+  }
+  
+  // Prefer English track
+  const englishTrack = tracks.find(track => track.snippet.language === 'en')
+  if (englishTrack) {
+    return englishTrack
+  }
+  
+  // Fallback to first available track
+  return tracks[0]
+}
+
+/**
+ * Generates the S3 key for storing a video transcript
+ * @param owner The Cognito user ID (owner/entity_id)
+ * @param channelId The DynamoDB channel record ID
+ * @param videoYoutubeId The YouTube video ID
+ * @returns The S3 key in format: transcripts/{owner}/{channelId}/{videoYoutubeId}.txt
+ */
+function buildTranscriptKey(owner: string, channelId: string, videoYoutubeId: string): string {
+  return `transcripts/${owner}/${channelId}/${videoYoutubeId}.txt`
+}
+
+/**
  * Extracts the YouTube channel ID from various URL formats
  * Supports: /channel/{ID}, /@{handle}, /c/{custom}, /user/{username}
  * @param url The YouTube channel URL
