@@ -34,7 +34,7 @@ Extend the existing video import pipeline to fetch YouTube captions and store th
     - Generate random non-empty strings for owner, channel, and video IDs. Verify the key matches the expected pattern.
     - **Validates: Requirements 3.1**
 
-- [ ] 3. Checkpoint — Verify pure functions and property tests
+- [x] 3. Checkpoint — Verify pure functions and property tests
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 4. Implement transcript fetching and S3 upload
