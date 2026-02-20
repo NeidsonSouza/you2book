@@ -7,6 +7,7 @@ import * as agentcore from '@aws-cdk/aws-bedrock-agentcore-alpha';
 import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
+import { storage } from './storage/resource';
 import { fetchChannelVideos } from './functions/fetch-channel-videos/resource';
 import { agentInvoker } from './functions/agent-invoker/resource';
 import { execSync } from 'child_process';
@@ -23,6 +24,7 @@ const backend = defineBackend({
   data,
   fetchChannelVideos,
   agentInvoker,
+  storage
 });
 
 
