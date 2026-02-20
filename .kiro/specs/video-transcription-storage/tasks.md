@@ -37,12 +37,12 @@ Extend the existing video import pipeline to fetch YouTube captions and store th
 - [x] 3. Checkpoint — Verify pure functions and property tests
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Implement transcript fetching and S3 upload
-  - [ ] 4.1 Create `fetchTranscript` function that calls YouTube `captions.list` and `captions.download` for a video, selects the best track using `selectCaptionTrack`, downloads SRT content, and returns plain text via `stripSrtTimestamps`. Returns `null` if no captions or on error. Include logging for caption list request, selected language, and character count.
+- [x] 4. Implement transcript fetching and S3 upload
+  - [x] 4.1 Create `fetchTranscript` function that calls YouTube `captions.list` and `captions.download` for a video, selects the best track using `selectCaptionTrack`, downloads SRT content, and returns plain text via `stripSrtTimestamps`. Returns `null` if no captions or on error. Include logging for caption list request, selected language, and character count.
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 6.1, 6.2_
-  - [ ] 4.2 Create `uploadTranscriptToS3` function using `@aws-sdk/client-s3` `PutObjectCommand` to upload plain text content with `ContentType: 'text/plain; charset=utf-8'`. Use a module-level `S3Client` singleton. Include logging for S3 key and result.
+  - [x] 4.2 Create `uploadTranscriptToS3` function using `@aws-sdk/client-s3` `PutObjectCommand` to upload plain text content with `ContentType: 'text/plain; charset=utf-8'`. Use a module-level `S3Client` singleton. Include logging for S3 key and result.
     - _Requirements: 3.1, 3.3, 6.3_
-  - [ ] 4.3 Create `processTranscript` orchestrator function that calls `fetchTranscript`, builds the S3 key via `buildTranscriptKey`, calls `uploadTranscriptToS3`, and returns `{ success: boolean, key?: string }`. Catch and log all errors per video.
+  - [x] 4.3 Create `processTranscript` orchestrator function that calls `fetchTranscript`, builds the S3 key via `buildTranscriptKey`, calls `uploadTranscriptToS3`, and returns `{ success: boolean, key?: string }`. Catch and log all errors per video.
     - _Requirements: 3.1, 3.2, 3.4, 5.3, 6.4_
   - [ ]* 4.4 Write unit tests for `fetchTranscript` with mocked YouTube API (no tracks, error response, valid SRT response)
     - _Requirements: 2.1, 2.4, 2.5_

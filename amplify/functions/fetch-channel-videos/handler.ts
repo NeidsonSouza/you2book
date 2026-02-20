@@ -1,5 +1,7 @@
 // External libraries
 import axios from "axios"
+import { google } from "googleapis"
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 
 // AWS Amplify SDK
 import { Amplify } from "aws-amplify"
@@ -9,6 +11,9 @@ import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtim
 // Local modules
 import type { Schema } from "../../data/resource"
 import { env } from "$amplify/env/fetch-channel-videos"
+
+// Module-level S3 client singleton
+const s3Client = new S3Client({})
 
 // Configure Amplify for Lambda environment using the official helper
 const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env)
@@ -30,6 +35,21 @@ function getYouTubeApiKey(): string {
   }
   
   return apiKey
+}
+
+/**
+ * Retrieves the S3 bucket name for transcript storage from environment variables
+ * @returns The S3 bucket name
+ * @throws Error if the bucket name is not configured
+ */
+function getTranscriptBucketName(): string {
+  const bucketName = env.TRANSCRIPT_BUCKET_NAME
+  
+  if (!bucketName) {
+    throw new Error("Transcript bucket name not configured")
+  }
+  
+  return bucketName
 }
 
 /**
@@ -113,6 +133,131 @@ function selectCaptionTrack(tracks: CaptionTrack[]): CaptionTrack | null {
  */
 function buildTranscriptKey(owner: string, channelId: string, videoYoutubeId: string): string {
   return `transcripts/${owner}/${channelId}/${videoYoutubeId}.txt`
+}
+
+/**
+ * Fetches captions for a YouTube video and returns plain text transcript
+ * @param videoYoutubeId The YouTube video ID
+ * @param apiKey The YouTube API key
+ * @returns Plain text transcript content, or null if no captions available or on error
+ */
+async function fetchTranscript(videoYoutubeId: string, apiKey: string): Promise<string | null> {
+  try {
+    console.log(`Fetching captions for video: ${videoYoutubeId}`)
+    
+    // Initialize YouTube API client
+    const youtube = google.youtube({
+      version: 'v3',
+      auth: apiKey
+    })
+    
+    // Step 1: List available caption tracks
+    const captionsListResponse = await youtube.captions.list({
+      part: ['snippet'],
+      videoId: videoYoutubeId
+    })
+    
+    const tracks = captionsListResponse.data.items as CaptionTrack[] | undefined
+    
+    if (!tracks || tracks.length === 0) {
+      console.log(`No captions available for video: ${videoYoutubeId}`)
+      return null
+    }
+    
+    // Step 2: Select the best caption track
+    const selectedTrack = selectCaptionTrack(tracks)
+    
+    if (!selectedTrack) {
+      console.log(`No suitable caption track found for video: ${videoYoutubeId}`)
+      return null
+    }
+    
+    const language = selectedTrack.snippet.language
+    console.log(`Selected caption track for video ${videoYoutubeId}: language=${language}`)
+    
+    // Step 3: Download the caption content in SRT format
+    const captionDownloadResponse = await youtube.captions.download({
+      id: selectedTrack.id,
+      tfmt: 'srt'
+    }, {
+      responseType: 'text'
+    })
+    
+    const srtContent = captionDownloadResponse.data as string
+    
+    // Step 4: Strip timestamps and convert to plain text
+    const plainText = stripSrtTimestamps(srtContent)
+    
+    console.log(`Successfully fetched transcript for video ${videoYoutubeId}: language=${language}, characters=${plainText.length}`)
+    
+    return plainText
+  } catch (error) {
+    // Log error and return null - don't throw to allow processing to continue
+    console.error(`Error fetching transcript for video ${videoYoutubeId}:`, error)
+    return null
+  }
+}
+
+/**
+ * Uploads transcript content to S3
+ * @param params Object containing bucketName, key, and content
+ * @returns Promise that resolves when upload is complete
+ */
+async function uploadTranscriptToS3(params: { bucketName: string; key: string; content: string }): Promise<void> {
+  const { bucketName, key, content } = params
+  
+  try {
+    console.log(`Uploading transcript to S3: ${key}`)
+    
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+      Body: content,
+      ContentType: 'text/plain; charset=utf-8'
+    })
+    
+    await s3Client.send(command)
+    
+    console.log(`Successfully uploaded transcript to S3: ${key}`)
+  } catch (error) {
+    console.error(`Error uploading transcript to S3 (key: ${key}):`, error)
+    throw error
+  }
+}
+
+/**
+ * Orchestrates the full transcript processing flow for a single video
+ * @param params Object containing video metadata and configuration
+ * @returns Object with success status and optional S3 key
+ */
+async function processTranscript(params: {
+  videoYoutubeId: string
+  channelId: string
+  owner: string
+  apiKey: string
+  bucketName: string
+}): Promise<{ success: boolean; key?: string }> {
+  const { videoYoutubeId, channelId, owner, apiKey, bucketName } = params
+  
+  try {
+    // Step 1: Fetch transcript from YouTube
+    const plainText = await fetchTranscript(videoYoutubeId, apiKey)
+    
+    if (!plainText) {
+      return { success: false }
+    }
+    
+    // Step 2: Build S3 key
+    const key = buildTranscriptKey(owner, channelId, videoYoutubeId)
+    
+    // Step 3: Upload to S3
+    await uploadTranscriptToS3({ bucketName, key, content: plainText })
+    
+    return { success: true, key }
+  } catch (error) {
+    console.error(`Error processing transcript for video ${videoYoutubeId}:`, error)
+    return { success: false }
+  }
 }
 
 /**
