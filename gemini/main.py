@@ -140,7 +140,7 @@ def print_video_content(video: VideoContent) -> None:
     print(f"{video.video_title}")
     print(f"{video.video_url}\n")
     for part in video.parts:
-        print(f"Parte {part.part_number}: {part.title}")
+        print(f"Part {part.part_number}: {part.title}")
         for topic in part.topics:
             print(f"  [{topic.timestamp}] {topic.title}: {topic.description}")
         print()
@@ -167,18 +167,18 @@ def print_table_of_contents(toc: BookTableOfContents) -> None:
     total_pages = 0.0
 
     for chapter in toc.chapters:
-        print(f"Capítulo {chapter.number}: {chapter.title}")
+        print(f"Chapter {chapter.number}: {chapter.title}")
         print(f"  {chapter.summary}")
         for topic in chapter.topics:
             print(f"  {topic.number}. {topic.title}")
-            print(f"       ~{topic.estimated_word_count} palavras | ~{topic.estimated_pages:.1f} páginas")
+            print(f"       ~{topic.estimated_word_count} words | ~{topic.estimated_pages:.1f} pages")
             print(f"       Timestamps: {', '.join(topic.source_timestamps)}")
             total_words += topic.estimated_word_count
             total_pages += topic.estimated_pages
         print()
 
     print(f"{'─' * 60}")
-    print(f"Total estimado: ~{total_words} palavras | ~{total_pages:.1f} páginas")
+    print(f"Estimated total: ~{total_words} words | ~{total_pages:.1f} pages")
     print(f"{'─' * 60}\n")
 
 
@@ -191,34 +191,34 @@ def main() -> None:
     output_dir = os.path.dirname(__file__)
 
     # Step 1: structured extraction of video content
-    print(">>> Passo 1: Extraindo tópicos do vídeo...\n")
+    print(">>> Step 1: Extracting topics from the video...\n")
     response = agent(EXTRACT_PROMPT, structured_output_model=VideoContent)
     video: VideoContent = response.structured_output
     print_video_content(video)
 
     # Step 2: build structured table of contents with page estimates
-    print(">>> Passo 2: Gerando sumário estruturado do livro...\n")
+    print(">>> Step 2: Generating structured book outline...\n")
     extracted_text = format_video_as_text(video)
-    full_book_prompt = f"Aqui estão os tópicos extraídos:\n\n{extracted_text}\n\n{BOOK_PROMPT}"
+    full_book_prompt = f"Here are the extracted topics:\n\n{extracted_text}\n\n{BOOK_PROMPT}"
     toc_response = agent(full_book_prompt, structured_output_model=BookTableOfContents)
     toc: BookTableOfContents = toc_response.structured_output
     print_table_of_contents(toc)
 
     # Step 3: loop over each topic and generate prose
-    print(">>> Passo 3: Escrevendo capítulos...\n")
+    print(">>> Step 3: Writing chapters...\n")
     written_topics: list[WrittenTopic] = []
 
     for chapter in toc.chapters:
         for topic in chapter.topics:
-            chapter_ref = f"Capítulo {chapter.number}, tópico {topic.number}"
-            print(f"  Escrevendo {chapter_ref}: {topic.title}...")
+            chapter_ref = f"Chapter {chapter.number}, topic {topic.number}"
+            print(f"  Writing {chapter_ref}: {topic.title}...")
 
             # Build context of previously covered topics to avoid repetition
             previously_covered = ""
             if written_topics:
                 covered_titles = [f"- {wt.topic_number}. {wt.title}" for wt in written_topics]
                 previously_covered = (
-                    "\nTópicos já escritos (não repita esses conceitos):\n"
+                    "\nTopics already written (do not repeat these concepts):\n"
                     + "\n".join(covered_titles)
                     + "\n"
                 )
@@ -247,7 +247,7 @@ def main() -> None:
             )
             written_topics.append(written)
 
-            print(f"    → {actual_words} palavras, ~{actual_pages} páginas")
+            print(f"    → {actual_words} words, ~{actual_pages} pages")
 
     # Build final structured output
     total_words = sum(wt.actual_word_count for wt in written_topics)
@@ -274,8 +274,8 @@ def main() -> None:
             f.write(f"{wt.content}\n\n---\n\n")
 
     print(f"\n{'=' * 60}")
-    print(f"  Livro gerado: {book.book_title}")
-    print(f"  Total: {total_words} palavras | ~{total_pages} páginas")
+    print(f"  Book generated: {book.book_title}")
+    print(f"  Total: {total_words} words | ~{total_pages} pages")
     print(f"  JSON: {json_path}")
     print(f"  Markdown: {md_path}")
     print(f"{'=' * 60}")
