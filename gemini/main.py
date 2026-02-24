@@ -88,9 +88,9 @@ class BookOutput(BaseModel):
 # --- Prompts ---
 
 EXTRACT_PROMPT = """
-Extraia todo o conteúdo apresentado no vídeo 'Elon Musk : How to Build the Future' (https://www.youtube.com/watch?v=tnBQmEqBCY0).
-Liste-os em tópicos detalhados, removendo muletas de linguagem e saudações.
-Identifique o 'minuto:segundo' de cada tópico relevante
+Extract all the content presented in the video 'Elon Musk : How to Build the Future' (https://www.youtube.com/watch?v=tnBQmEqBCY0).
+List them as detailed topics, removing filler words and greetings.
+Identify the 'minute:second' timestamp of each relevant topic.
 """.strip()
 
 BOOK_PROMPT = """
