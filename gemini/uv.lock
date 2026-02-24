@@ -512,6 +512,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "google-genai" },
+    { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "strands-agents", extra = ["gemini"] },
     { name = "strands-agents-tools" },
@@ -520,6 +521,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "google-genai", specifier = ">=1.64.0" },
+    { name = "pydantic", specifier = ">=2.12.5" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "strands-agents", extras = ["gemini"], specifier = ">=1.27.0" },
     { name = "strands-agents-tools", specifier = ">=0.2.21" },
