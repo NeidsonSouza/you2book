@@ -94,29 +94,29 @@ Identify the 'minute:second' timestamp of each relevant topic.
 """.strip()
 
 BOOK_PROMPT = """
-Com base nos tópicos extraídos acima, identifique redundâncias e agrupe temas similares.
-Crie um sumário de livro (Capítulos e Subcapítulos) que organize esses conceitos
-de forma lógica e fluida, garantindo que nenhum ponto fidedigno seja perdido.
+Based on the topics extracted above, identify redundancies and group similar themes.
+Create a book outline (Chapters and Subchapters) that organizes these concepts
+in a logical and fluid manner, ensuring no faithful point is lost.
 
-Para cada tópico/subcapítulo, estime:
-- Quantas palavras seriam necessárias para cobrir fielmente o conteúdo em prosa fluida
-- Quantas páginas isso representaria (considere ~250 palavras por página)
+For each topic/subchapter, estimate:
+- How many words would be needed to faithfully cover the content in fluid prose
+- How many pages that would represent (assume ~250 words per page)
 
-Inclua os timestamps originais do vídeo que cada tópico cobre.
+Include the original video timestamps that each topic covers.
 """.strip()
 
 CHAPTER_PROMPT_TEMPLATE = """
-Escreva o conteúdo referente ao {chapter_ref}: {topic_title}.
+Write the content for {chapter_ref}: {topic_title}.
 
-Contexto do capítulo: {chapter_summary}
-Timestamps de referência no vídeo: {timestamps}
+Chapter context: {chapter_summary}
+Reference timestamps in the video: {timestamps}
 {previously_covered}
-Estilo: prosa fluida, sem gírias, sem vícios de linguagem e sem repetir conceitos
-já abordados nos tópicos anteriores. O texto deve parecer um livro escrito por um autor,
-não uma transcrição. Formate em Markdown.
+Style: fluid prose, no slang, no filler words, and do not repeat concepts
+already covered in previous topics. The text should read like a book written by an author,
+not a transcription. Format in Markdown.
 
-Escreva aproximadamente {word_count} palavras para cobrir fielmente todo o conteúdo
-deste tópico.
+Write approximately {word_count} words to faithfully cover all the content
+of this topic.
 """.strip()
 
 
@@ -150,7 +150,7 @@ def format_video_as_text(video: VideoContent) -> str:
     """Serialize VideoContent to a readable text block for use as agent context."""
     lines = [f"# {video.video_title}", f"{video.video_url}", ""]
     for part in video.parts:
-        lines.append(f"## Parte {part.part_number}: {part.title}")
+        lines.append(f"## Part {part.part_number}: {part.title}")
         for topic in part.topics:
             lines.append(f"- [{topic.timestamp}] {topic.title}: {topic.description}")
         lines.append("")
