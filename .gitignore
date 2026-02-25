@@ -30,3 +30,55 @@ amplifyconfiguration*
 
 # agentcore build artifacts
 agentcore/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+wheels/
+*.whl
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Hypothesis (property-based testing)
+.hypothesis/
+
+# mypy / type checkers
+.mypy_cache/
+.pytype/
+
+# Environments
+*.env
+
+# Byte-compiled
+*.pyo
+*.pyd
+
+# Jupyter
+.ipynb_checkpoints/
+
+# uv
+uv.lock

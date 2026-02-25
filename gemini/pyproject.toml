@@ -11,3 +11,12 @@ dependencies = [
     "strands-agents-tools>=0.2.21",
     "strands-agents[gemini]>=1.27.0",
 ]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.151.9",
+    "pytest>=9.0.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
