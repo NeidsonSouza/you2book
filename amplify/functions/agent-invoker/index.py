@@ -4,25 +4,35 @@ import uuid
 import os
 import logging
 
+from routing import resolve_agent
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-AGENT_RUNTIME_ARN = os.environ.get('AGENT_RUNTIME_ARN', '')
-REGION = AGENT_RUNTIME_ARN.split(':')[3] if AGENT_RUNTIME_ARN.count(':') >= 3 else 'us-east-1'
+AGENT_RUNTIME_MAP = json.loads(os.environ.get('AGENT_RUNTIME_MAP', '{}'))
 
-logger.info(f"Initializing bedrock-agentcore client | region={REGION} | arn={AGENT_RUNTIME_ARN}")
-agent_core_client = boto3.client('bedrock-agentcore', region_name=REGION)
+logger.info(f"Initialized agent runtime map | agents={list(AGENT_RUNTIME_MAP.keys())}")
 
 
 def handler(event, context):
     body = event if isinstance(event, dict) else json.loads(event)
-    
+
+    agent_name = body.get('agentName')
     prompt = body.get('prompt', '')
     session_id = body.get('sessionId') or str(uuid.uuid4()) + '-agentinvoker'
-    
+
     # Log only metadata, not full event payload
-    logger.info(f"Request received | functionArn={context.invoked_function_arn} | requestId={context.aws_request_id} | sessionId={session_id} | promptLength={len(prompt)}")
-    
+    logger.info(f"Request received | functionArn={context.invoked_function_arn} | requestId={context.aws_request_id} | sessionId={session_id} | agentName={agent_name} | promptLength={len(prompt)}")
+
+    # Resolve agent name to runtime ARN
+    result = resolve_agent(agent_name, AGENT_RUNTIME_MAP)
+    if isinstance(result, dict):
+        logger.error(f"Agent routing failed | agentName={agent_name} | sessionId={session_id}")
+        return result
+
+    arn = result
+    region = arn.split(':')[3] if arn.count(':') >= 3 else 'us-east-1'
+
     if not prompt:
         logger.error(f"Missing required field: prompt | sessionId={session_id}")
         return {
@@ -32,11 +42,13 @@ def handler(event, context):
 
     payload = json.dumps({'input': {'prompt': prompt}}).encode()
 
-    logger.info(f"Invoking AgentCore | runtimeArn={AGENT_RUNTIME_ARN} | sessionId={session_id} | promptLength={len(prompt)}")
+    logger.info(f"Invoking AgentCore | runtimeArn={arn} | region={region} | sessionId={session_id} | promptLength={len(prompt)}")
 
     try:
+        agent_core_client = boto3.client('bedrock-agentcore', region_name=region)
+
         response = agent_core_client.invoke_agent_runtime(
-            agentRuntimeArn=AGENT_RUNTIME_ARN,
+            agentRuntimeArn=arn,
             runtimeSessionId=session_id,
             payload=payload,
         )
@@ -74,7 +86,7 @@ def handler(event, context):
 
     except Exception as e:
         error_type = type(e).__name__
-        logger.error(f"InvokeAgentRuntime failed | errorType={error_type} | runtimeArn={AGENT_RUNTIME_ARN} | region={REGION} | sessionId={session_id} | error={str(e)}", exc_info=True)
+        logger.error(f"InvokeAgentRuntime failed | errorType={error_type} | runtimeArn={arn} | region={region} | sessionId={session_id} | error={str(e)}", exc_info=True)
         return {
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})

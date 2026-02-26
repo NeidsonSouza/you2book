@@ -12,10 +12,11 @@ import { fetchChannelVideos } from './functions/fetch-channel-videos/resource';
 import { agentInvoker } from './functions/agent-invoker/resource';
 import { saveTranscript } from './functions/save-transcript/resource';
 import { execSync } from 'child_process';
-import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { discoverAgents, computeContentHash, shouldBuild } from '../src/lib/agentDiscovery';
+import { generateRuntimeName, buildRegistryMap } from '../src/lib/agentRegistry';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,28 +32,32 @@ const backend = defineBackend({
 
 
 
-// Only run build if agentcore source files have changed
-const agentcoreSrcDir = path.resolve(__dirname, '..', 'agentcore', 'src');
-const agentcoreDistDir = path.resolve(__dirname, '..', 'agentcore', 'dist');
-const buildHashPath = path.join(agentcoreDistDir, '.build_hash');
-const deploymentZipPath = path.join(agentcoreDistDir, 'deployment_package.zip');
+// Discover and build all agents under agentcore/
+const agentcoreRoot = path.resolve(__dirname, '..', 'agentcore');
+const agents = discoverAgents(agentcoreRoot);
 
-const sourceFiles = ['main.py', 'requirements.txt'];
-const hashContent = sourceFiles
-  .map((f) => fs.readFileSync(path.join(agentcoreSrcDir, f)))
-  .reduce((hash, buf) => hash.update(buf), createHash('sha256'))
-  .digest('hex');
+for (const agent of agents) {
+  const sourceBuffers = ['main.py', 'requirements.txt'].map((f) =>
+    fs.readFileSync(path.join(agent.srcDir, f))
+  );
+  const currentHash = computeContentHash(sourceBuffers);
 
-const previousHash = fs.existsSync(buildHashPath)
-  ? fs.readFileSync(buildHashPath, 'utf-8').trim()
-  : '';
+  const buildHashPath = path.join(agent.distDir, '.build_hash');
+  const deploymentZipPath = path.join(agent.distDir, 'deployment_package.zip');
 
-if (hashContent !== previousHash || !fs.existsSync(deploymentZipPath)) {
-  const agentcoreBuildScript = path.resolve(__dirname, '..', 'agentcore', 'build.sh');
-  execSync(`bash ${agentcoreBuildScript}`, { stdio: 'inherit' });
-  fs.writeFileSync(buildHashPath, hashContent);
-} else {
-  console.log('agentcore: source unchanged, skipping build');
+  const previousHash = fs.existsSync(buildHashPath)
+    ? fs.readFileSync(buildHashPath, 'utf-8').trim()
+    : '';
+
+  if (shouldBuild(currentHash, previousHash, fs.existsSync(deploymentZipPath))) {
+    execSync(`bash ${agent.buildScript}`, { stdio: 'inherit' });
+    if (!fs.existsSync(agent.distDir)) {
+      fs.mkdirSync(agent.distDir, { recursive: true });
+    }
+    fs.writeFileSync(buildHashPath, currentHash);
+  } else {
+    console.log(`agentcore [${agent.name}]: source unchanged, skipping build`);
+  }
 }
 
 const customResourceStack = backend.createStack('AgentcoreBucketStack');
@@ -64,82 +69,91 @@ const bucket = new s3.Bucket(customResourceStack, 'AgentcoreBucket', {
   removalPolicy: cdk.RemovalPolicy.DESTROY,
 });
 
-// Deploy agentcore package to S3 with content-hash prefix so CFN detects changes
-const zipHash = hashContent.substring(0, 8);
-const agentcoreDistPath = path.resolve(__dirname, '..', 'agentcore', 'dist');
-const deployment = new s3deploy.BucketDeployment(customResourceStack, 'AgentcoreDeployment', {
-  sources: [s3deploy.Source.asset(agentcoreDistPath)],
-  destinationBucket: bucket,
-  destinationKeyPrefix: `main/${zipHash}`,
-});
+const agentInvokerLambda = backend.agentInvoker.resources.lambda as Function;
+const runtimeEntries: Array<{ name: string; arn: string }> = [];
 
-// Create AgentCore Runtime construct
-const runtime = new agentcore.Runtime(customResourceStack, 'AgentcoreRuntime', {
-  runtimeName: 'you2book_http_server',
-  agentRuntimeArtifact: agentcore.AgentRuntimeArtifact.fromS3(
-    { bucketName: bucket.bucketName, objectKey: `main/${zipHash}/deployment_package.zip` },
-    agentcore.AgentCoreRuntime.PYTHON_3_12,
-    ['main.py']
-  ),
-  authorizerConfiguration: agentcore.RuntimeAuthorizerConfiguration.usingIAM(),
-  protocolConfiguration: agentcore.ProtocolType.HTTP,
-  networkConfiguration: agentcore.RuntimeNetworkConfiguration.usingPublicNetwork(),
-  description: 'You2Book HTTP server runtime',
-});
-
-// Ensure the S3 deployment completes before the Runtime is created
-// Add dependency at both construct tree and CFN level for reliability
-runtime.node.addDependency(deployment);
-
-// Also wire up CFN-level DependsOn explicitly
-const allRuntimeChildren = runtime.node.findAll();
-const allDeploymentChildren = deployment.node.findAll();
-
-const runtimeCfnResource = allRuntimeChildren.find(
-  (c): c is cdk.CfnResource => c instanceof cdk.CfnResource && c.cfnResourceType === 'AWS::BedrockAgentCore::Runtime'
-);
-const deploymentCfnResource = allDeploymentChildren.find(
-  (c): c is cdk.CfnResource => c instanceof cdk.CfnResource && c.cfnResourceType === 'Custom::CDKBucketDeployment'
-);
-
-if (runtimeCfnResource && deploymentCfnResource) {
-  runtimeCfnResource.addDependency(deploymentCfnResource);
-} else {
-  console.warn('agentcore: Could not wire CFN dependency.',
-    'Runtime CFN found:', !!runtimeCfnResource,
-    'Deployment CFN found:', !!deploymentCfnResource
+for (const agent of agents) {
+  const sourceBuffers = ['main.py', 'requirements.txt'].map((f) =>
+    fs.readFileSync(path.join(agent.srcDir, f))
   );
-  // Log all construct types for debugging
-  console.warn('Runtime children:', allRuntimeChildren.map(c => c.node.id).join(', '));
-  console.warn('Deployment children:', allDeploymentChildren.map(c => c.node.id).join(', '));
+  const zipHash = computeContentHash(sourceBuffers).substring(0, 8);
+
+  // Deploy agent package to S3 with content-hash prefix so CFN detects changes
+  const deployment = new s3deploy.BucketDeployment(customResourceStack, `AgentcoreDeploy_${agent.name}`, {
+    sources: [s3deploy.Source.asset(agent.distDir)],
+    destinationBucket: bucket,
+    destinationKeyPrefix: `${agent.name}/${zipHash}`,
+  });
+
+  // Create AgentCore Runtime construct for this agent
+  const runtime = new agentcore.Runtime(customResourceStack, `AgentcoreRuntime_${agent.name}`, {
+    runtimeName: generateRuntimeName(agent.name),
+    agentRuntimeArtifact: agentcore.AgentRuntimeArtifact.fromS3(
+      { bucketName: bucket.bucketName, objectKey: `${agent.name}/${zipHash}/deployment_package.zip` },
+      agentcore.AgentCoreRuntime.PYTHON_3_12,
+      ['main.py']
+    ),
+    authorizerConfiguration: agentcore.RuntimeAuthorizerConfiguration.usingIAM(),
+    protocolConfiguration: agentcore.ProtocolType.HTTP,
+    networkConfiguration: agentcore.RuntimeNetworkConfiguration.usingPublicNetwork(),
+    description: `You2Book ${agent.name} runtime`,
+  });
+
+  // Ensure the S3 deployment completes before the Runtime is created
+  runtime.node.addDependency(deployment);
+
+  // Wire up CFN-level DependsOn explicitly
+  const allRuntimeChildren = runtime.node.findAll();
+  const allDeploymentChildren = deployment.node.findAll();
+
+  const runtimeCfnResource = allRuntimeChildren.find(
+    (c): c is cdk.CfnResource => c instanceof cdk.CfnResource && c.cfnResourceType === 'AWS::BedrockAgentCore::Runtime'
+  );
+  const deploymentCfnResource = allDeploymentChildren.find(
+    (c): c is cdk.CfnResource => c instanceof cdk.CfnResource && c.cfnResourceType === 'Custom::CDKBucketDeployment'
+  );
+
+  if (runtimeCfnResource && deploymentCfnResource) {
+    runtimeCfnResource.addDependency(deploymentCfnResource);
+  } else {
+    console.warn(`agentcore [${agent.name}]: Could not wire CFN dependency.`,
+      'Runtime CFN found:', !!runtimeCfnResource,
+      'Deployment CFN found:', !!deploymentCfnResource
+    );
+    console.warn('Runtime children:', allRuntimeChildren.map(c => c.node.id).join(', '));
+    console.warn('Deployment children:', allDeploymentChildren.map(c => c.node.id).join(', '));
+  }
+
+  // Grant IAM permissions for Bedrock model invocation
+  runtime.addToRolePolicy(new iam.PolicyStatement({
+    actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+    resources: [
+      'arn:aws:bedrock:*::foundation-model/*',
+      'arn:aws:bedrock:*:*:inference-profile/*',
+    ],
+  }));
+
+  // Grant IAM permissions for CloudWatch logging
+  runtime.addToRolePolicy(new iam.PolicyStatement({
+    actions: [
+      'logs:CreateLogGroup',
+      'logs:CreateLogStream',
+      'logs:PutLogEvents',
+      'logs:DescribeLogStreams',
+      'logs:DescribeLogGroups',
+    ],
+    resources: ['arn:aws:logs:*:*:log-group:/aws/bedrock-agentcore/runtimes/*'],
+  }));
+
+  // Grant the agent-invoker Lambda permission to invoke this Runtime
+  runtime.grantInvoke(agentInvokerLambda);
+
+  runtimeEntries.push({ name: agent.name, arn: runtime.agentRuntimeArn });
 }
 
-// Add minimal IAM permissions to the execution role
-runtime.addToRolePolicy(new iam.PolicyStatement({
-  actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
-  resources: [
-    'arn:aws:bedrock:*::foundation-model/*',
-    'arn:aws:bedrock:*:*:inference-profile/*',
-  ],
-}));
-
-runtime.addToRolePolicy(new iam.PolicyStatement({
-  actions: [
-    'logs:CreateLogGroup',
-    'logs:CreateLogStream',
-    'logs:PutLogEvents',
-    'logs:DescribeLogStreams',
-    'logs:DescribeLogGroups',
-  ],
-  resources: ['arn:aws:logs:*:*:log-group:/aws/bedrock-agentcore/runtimes/*'],
-}));
-
-// Grant the agent-invoker Lambda permission to invoke the AgentCore Runtime
-const agentInvokerLambda = backend.agentInvoker.resources.lambda as Function;
-runtime.grantInvoke(agentInvokerLambda);
-
-// Pass the Runtime ARN to the agent-invoker Lambda as an environment variable
-agentInvokerLambda.addEnvironment('AGENT_RUNTIME_ARN', runtime.agentRuntimeArn);
+// Build the registry map and set it as an environment variable on the invoker Lambda
+const runtimeMap = buildRegistryMap(runtimeEntries);
+agentInvokerLambda.addEnvironment('AGENT_RUNTIME_MAP', JSON.stringify(runtimeMap));
 
 // Grant the fetch-channel-videos Lambda write access to the storage bucket for transcripts
 const storageBucket = backend.storage.resources.bucket;
@@ -159,8 +173,8 @@ saveTranscriptLambda.grantInvoke(fetchLambda);
 // Pass the save-transcript Lambda function name to the fetch-channel-videos Lambda
 fetchLambda.addEnvironment('SAVE_TRANSCRIPT_FUNCTION_NAME', saveTranscriptLambda.functionName);
 
-// Export the Runtime ARN as a CfnOutput
-new cdk.CfnOutput(customResourceStack, 'AgentcoreRuntimeArn', {
-  value: runtime.agentRuntimeArn,
-  description: 'ARN of the AgentCore Runtime',
+// Export the Runtime map as a CfnOutput
+new cdk.CfnOutput(customResourceStack, 'AgentcoreRuntimeMap', {
+  value: JSON.stringify(runtimeMap),
+  description: 'JSON map of agent names to AgentCore Runtime ARNs',
 });
