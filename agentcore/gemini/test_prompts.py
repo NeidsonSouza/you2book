@@ -3,15 +3,14 @@
 Validates: Requirements 7.3, 2.1, 2.2
 """
 
-from prompts import EXTRACT_PROMPT, BOOK_PROMPT, CHAPTER_PROMPT_TEMPLATE
+from prompts import build_extract_prompt, DEFAULT_VIDEO_URL, BOOK_PROMPT, CHAPTER_PROMPT_TEMPLATE
 
 
 # Original prompt strings copied verbatim from the pre-refactor main.py
 # to serve as ground-truth references for character-for-character comparison.
 
 ORIGINAL_EXTRACT_PROMPT = (
-    "Extract all the content presented in the video 'Elon Musk : How to Build the Future' "
-    "(https://www.youtube.com/watch?v=tnBQmEqBCY0).\n"
+    "Extract all the content presented in the video 'https://www.youtube.com/watch?v=rWUWfj_PqmM'.\n"
     "List them as detailed topics, removing filler words and greetings.\n"
     "Identify the 'minute:second' timestamp of each relevant topic."
 )
@@ -43,9 +42,17 @@ ORIGINAL_CHAPTER_PROMPT_TEMPLATE = (
 )
 
 
-def test_extract_prompt_matches_original() -> None:
-    """EXTRACT_PROMPT in prompts.py matches the original from main.py."""
-    assert EXTRACT_PROMPT == ORIGINAL_EXTRACT_PROMPT
+def test_extract_prompt_default_matches_original() -> None:
+    """build_extract_prompt() with default URL matches the original prompt text."""
+    assert build_extract_prompt() == ORIGINAL_EXTRACT_PROMPT
+
+
+def test_extract_prompt_custom_url() -> None:
+    """build_extract_prompt() substitutes a custom URL into the prompt."""
+    custom_url = "https://www.youtube.com/watch?v=custom123"
+    result = build_extract_prompt(custom_url)
+    assert custom_url in result
+    assert DEFAULT_VIDEO_URL not in result
 
 
 def test_book_prompt_matches_original() -> None:
@@ -59,7 +66,7 @@ def test_chapter_prompt_template_matches_original() -> None:
 
 
 def test_prompts_module_has_no_internal_imports() -> None:
-    """prompts.py contains only string constants with zero internal imports."""
+    """prompts.py contains only string constants and functions with zero internal imports."""
     import importlib
     import inspect
 

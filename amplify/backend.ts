@@ -37,7 +37,10 @@ const agentcoreRoot = path.resolve(__dirname, '..', 'agentcore');
 const agents = discoverAgents(agentcoreRoot);
 
 for (const agent of agents) {
-  const sourceBuffers = ['main.py', 'requirements.txt'].map((f) =>
+  const sourceFiles = fs.readdirSync(agent.srcDir)
+    .filter((f) => f.endsWith('.py') || f.endsWith('.txt'))
+    .sort();
+  const sourceBuffers = sourceFiles.map((f) =>
     fs.readFileSync(path.join(agent.srcDir, f))
   );
   const currentHash = computeContentHash(sourceBuffers);
@@ -73,7 +76,10 @@ const agentInvokerLambda = backend.agentInvoker.resources.lambda as Function;
 const runtimeEntries: Array<{ name: string; arn: string }> = [];
 
 for (const agent of agents) {
-  const sourceBuffers = ['main.py', 'requirements.txt'].map((f) =>
+  const sourceFiles = fs.readdirSync(agent.srcDir)
+    .filter((f) => f.endsWith('.py') || f.endsWith('.txt'))
+    .sort();
+  const sourceBuffers = sourceFiles.map((f) =>
     fs.readFileSync(path.join(agent.srcDir, f))
   );
   const zipHash = computeContentHash(sourceBuffers).substring(0, 8);
@@ -84,6 +90,12 @@ for (const agent of agents) {
     destinationBucket: bucket,
     destinationKeyPrefix: `${agent.name}/${zipHash}`,
   });
+
+  // Build environment variables per agent
+  const environmentVariables: { [key: string]: string } = {};
+  if (agent.name === 'gemini') {
+    environmentVariables['OUTPUT_BUCKET_NAME'] = bucket.bucketName;
+  }
 
   // Create AgentCore Runtime construct for this agent
   const runtime = new agentcore.Runtime(customResourceStack, `AgentcoreRuntime_${agent.name}`, {
@@ -97,6 +109,7 @@ for (const agent of agents) {
     protocolConfiguration: agentcore.ProtocolType.HTTP,
     networkConfiguration: agentcore.RuntimeNetworkConfiguration.usingPublicNetwork(),
     description: `You2Book ${agent.name} runtime`,
+    ...(Object.keys(environmentVariables).length > 0 && { environmentVariables }),
   });
 
   // Ensure the S3 deployment completes before the Runtime is created
@@ -147,6 +160,14 @@ for (const agent of agents) {
 
   // Grant the agent-invoker Lambda permission to invoke this Runtime
   runtime.grantInvoke(agentInvokerLambda);
+
+  // Gemini-specific: grant S3 write access for book output
+  if (agent.name === 'gemini') {
+    runtime.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['s3:PutObject'],
+      resources: [`${bucket.bucketArn}/books/*`],
+    }));
+  }
 
   runtimeEntries.push({ name: agent.name, arn: runtime.agentRuntimeArn });
 }

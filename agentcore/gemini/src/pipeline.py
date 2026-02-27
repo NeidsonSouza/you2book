@@ -1,25 +1,23 @@
 """Main 3-step orchestration pipeline for book generation.
 
 Executes: extract topics → build TOC → generate chapters.
-Handles file I/O (JSON + Markdown output).
+Returns a BookOutput object for the caller to persist.
 """
 
-import os
-
 from models import BookOutput, BookTableOfContents, VideoContent, WrittenTopic
-from prompts import EXTRACT_PROMPT, BOOK_PROMPT, CHAPTER_PROMPT_TEMPLATE
+from prompts import build_extract_prompt, BOOK_PROMPT, CHAPTER_PROMPT_TEMPLATE
 from agent import build_agent
 from formatters import print_video_content, format_video_as_text, print_table_of_contents
 
 
-def run() -> None:
+def run_pipeline(video_url: str | None = None) -> BookOutput:
     """Three-step pipeline: extract topics → build TOC → generate chapters."""
     agent = build_agent()
-    output_dir = os.path.dirname(__file__)
 
     # Step 1: structured extraction of video content
     print(">>> Step 1: Extracting topics from the video...\n")
-    response = agent(EXTRACT_PROMPT, structured_output_model=VideoContent)
+    extract_prompt = build_extract_prompt(video_url) if video_url else build_extract_prompt()
+    response = agent(extract_prompt, structured_output_model=VideoContent)
     video: VideoContent = response.structured_output
     print_video_content(video)
 
@@ -88,21 +86,4 @@ def run() -> None:
         total_pages=total_pages,
     )
 
-    # Save structured output as JSON
-    json_path = os.path.join(output_dir, "book_output.json")
-    with open(json_path, "w", encoding="utf-8") as f:
-        f.write(book.model_dump_json(indent=2))
-
-    # Also save the full book as a single Markdown file
-    md_path = os.path.join(output_dir, "book.md")
-    with open(md_path, "w", encoding="utf-8") as f:
-        f.write(f"# {book.book_title}\n\n")
-        for wt in written_topics:
-            f.write(f"{wt.content}\n\n---\n\n")
-
-    print(f"\n{'=' * 60}")
-    print(f"  Book generated: {book.book_title}")
-    print(f"  Total: {total_words} words | ~{total_pages} pages")
-    print(f"  JSON: {json_path}")
-    print(f"  Markdown: {md_path}")
-    print(f"{'=' * 60}")
+    return book

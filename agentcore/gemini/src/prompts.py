@@ -1,10 +1,13 @@
 """Prompt template constants for the book generation pipeline."""
 
-EXTRACT_PROMPT = """
-Extract all the content presented in the video 'https://www.youtube.com/watch?v=rWUWfj_PqmM'.
+DEFAULT_VIDEO_URL = "https://www.youtube.com/watch?v=rWUWfj_PqmM"
+
+
+def build_extract_prompt(video_url: str = DEFAULT_VIDEO_URL) -> str:
+    """Build the extraction prompt with the given video URL."""
+    return f"""Extract all the content presented in the video '{video_url}'.
 List them as detailed topics, removing filler words and greetings.
-Identify the 'minute:second' timestamp of each relevant topic.
-""".strip()
+Identify the 'minute:second' timestamp of each relevant topic."""
 
 BOOK_PROMPT = """
 Based on the topics extracted above, identify redundancies and group similar themes.
