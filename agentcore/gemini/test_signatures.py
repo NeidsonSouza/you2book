@@ -16,16 +16,16 @@ from typing import Any
 import hypothesis.strategies as st
 from hypothesis import given, settings
 
-from agent import build_agent
-from formatters import format_video_as_text, print_table_of_contents, print_video_content
-from pipeline import run
+from src.agent import build_agent
+from src.formatters import format_video_as_text, print_table_of_contents, print_video_content
+from src.pipeline import run_pipeline
 
 # Reference dict capturing the original function signatures from main.py.
 # Each entry maps function_ref -> { "params": { name: annotation }, "return": annotation }
 # inspect.Parameter.empty is used for parameters with no annotation.
 ORIGINAL_SIGNATURES: dict[Callable[..., Any], dict[str, Any]] = {
     build_agent: {
-        "params": {},
+        "params": {"model_id": str},
         "return": "Agent",
     },
     print_video_content: {
@@ -40,9 +40,9 @@ ORIGINAL_SIGNATURES: dict[Callable[..., Any], dict[str, Any]] = {
         "params": {"toc": "BookTableOfContents"},
         "return": None,
     },
-    run: {
-        "params": {},
-        "return": None,
+    run_pipeline: {
+        "params": {"video_url": str | None},
+        "return": "BookOutput",
     },
 }
 

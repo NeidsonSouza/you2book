@@ -1,50 +1,42 @@
-"""Unit tests verifying prompt template strings match the originals character-for-character.
+"""Unit tests verifying prompt template strings contain required content.
 
-Validates: Requirements 7.3, 2.1, 2.2
+Validates: Requirements 3.1, 3.2, 3.3, 5.1, 6.1
 """
 
-from prompts import build_extract_prompt, DEFAULT_VIDEO_URL, BOOK_PROMPT, CHAPTER_PROMPT_TEMPLATE
+from src.prompts import build_extract_prompt, DEFAULT_VIDEO_URL, BOOK_PROMPT, CHAPTER_PROMPT_TEMPLATE
 
 
-# Original prompt strings copied verbatim from the pre-refactor main.py
-# to serve as ground-truth references for character-for-character comparison.
-
-ORIGINAL_EXTRACT_PROMPT = (
-    "Extract all the content presented in the video 'https://www.youtube.com/watch?v=rWUWfj_PqmM'.\n"
-    "List them as detailed topics, removing filler words and greetings.\n"
-    "Identify the 'minute:second' timestamp of each relevant topic."
-)
-
-ORIGINAL_BOOK_PROMPT = (
-    "Based on the topics extracted above, identify redundancies and group similar themes.\n"
-    "Create a book outline (Chapters and Subchapters) that organizes these concepts\n"
-    "in a logical and fluid manner, ensuring no faithful point is lost.\n"
-    "\n"
-    "For each topic/subchapter, estimate:\n"
-    "- How many words would be needed to faithfully cover the content in fluid prose\n"
-    "- How many pages that would represent (assume ~250 words per page)\n"
-    "\n"
-    "Include the original video timestamps that each topic covers."
-)
-
-ORIGINAL_CHAPTER_PROMPT_TEMPLATE = (
-    "Write the content for {chapter_ref}: {topic_title}.\n"
-    "\n"
-    "Chapter context: {chapter_summary}\n"
-    "Reference timestamps in the video: {timestamps}\n"
-    "{previously_covered}\n"
-    "Style: fluid prose, no slang, no filler words, and do not repeat concepts\n"
-    "already covered in previous topics. The text should read like a book written by an author,\n"
-    "not a transcription. Format in Markdown.\n"
-    "\n"
-    "Write approximately {word_count} words to faithfully cover all the content\n"
-    "of this topic."
-)
+def test_extract_prompt_contains_substance_extraction_instructions() -> None:
+    """Extraction prompt instructs model to extract detailed substance."""
+    prompt = build_extract_prompt()
+    
+    # Verify instructions for rich extraction (Req 3.1)
+    assert "detailed description" in prompt.lower()
+    assert "arguments" in prompt.lower() or "reasoning" in prompt.lower()
+    assert "examples" in prompt.lower()
+    assert "data points" in prompt.lower() or "facts" in prompt.lower()
+    assert "quotes" in prompt.lower()
+    assert "explanations" in prompt.lower()
 
 
-def test_extract_prompt_default_matches_original() -> None:
-    """build_extract_prompt() with default URL matches the original prompt text."""
-    assert build_extract_prompt() == ORIGINAL_EXTRACT_PROMPT
+def test_extract_prompt_contains_key_points_instruction() -> None:
+    """Extraction prompt instructs model to populate key_points field."""
+    prompt = build_extract_prompt()
+    
+    # Verify key_points instruction (Req 3.2)
+    assert "key points" in prompt.lower() or "key_points" in prompt.lower()
+    assert "discrete" in prompt.lower() or "factual claims" in prompt.lower()
+
+
+def test_extract_prompt_contains_grounding_constraint() -> None:
+    """Extraction prompt contains grounding constraint."""
+    prompt = build_extract_prompt()
+    
+    # Verify grounding constraint (Req 3.3)
+    assert "extract only" in prompt.lower() or "only what is" in prompt.lower()
+    assert "video" in prompt.lower()
+    assert "do not add" in prompt.lower() or "not add information" in prompt.lower()
+    assert "own knowledge" in prompt.lower() or "external" in prompt.lower()
 
 
 def test_extract_prompt_custom_url() -> None:
@@ -55,14 +47,44 @@ def test_extract_prompt_custom_url() -> None:
     assert DEFAULT_VIDEO_URL not in result
 
 
-def test_book_prompt_matches_original() -> None:
-    """BOOK_PROMPT in prompts.py matches the original from main.py."""
-    assert BOOK_PROMPT == ORIGINAL_BOOK_PROMPT
+def test_book_prompt_contains_grounding_constraint() -> None:
+    """BOOK_PROMPT contains grounding constraint."""
+    # Verify grounding constraint (Req 5.1)
+    assert "use only" in BOOK_PROMPT.lower() or "only the extracted" in BOOK_PROMPT.lower()
+    assert "do not add" in BOOK_PROMPT.lower() or "not add information" in BOOK_PROMPT.lower()
+    assert "own knowledge" in BOOK_PROMPT.lower() or "external" in BOOK_PROMPT.lower()
 
 
-def test_chapter_prompt_template_matches_original() -> None:
-    """CHAPTER_PROMPT_TEMPLATE in prompts.py matches the original from main.py."""
-    assert CHAPTER_PROMPT_TEMPLATE == ORIGINAL_CHAPTER_PROMPT_TEMPLATE
+def test_book_prompt_contains_toc_instructions() -> None:
+    """BOOK_PROMPT contains instructions for TOC generation."""
+    assert "outline" in BOOK_PROMPT.lower() or "chapters" in BOOK_PROMPT.lower()
+    assert "organize" in BOOK_PROMPT.lower()
+    assert "timestamps" in BOOK_PROMPT.lower()
+
+
+def test_chapter_prompt_template_contains_grounding_constraint() -> None:
+    """CHAPTER_PROMPT_TEMPLATE contains grounding constraint."""
+    # Verify grounding constraint (Req 6.1)
+    assert "write only" in CHAPTER_PROMPT_TEMPLATE.lower() or "only from the provided" in CHAPTER_PROMPT_TEMPLATE.lower()
+    assert "do not introduce" in CHAPTER_PROMPT_TEMPLATE.lower() or "not introduce external" in CHAPTER_PROMPT_TEMPLATE.lower()
+    assert "external knowledge" in CHAPTER_PROMPT_TEMPLATE.lower()
+
+
+def test_chapter_prompt_template_contains_relevant_content_placeholder() -> None:
+    """CHAPTER_PROMPT_TEMPLATE contains relevant_content placeholder."""
+    # Verify relevant_content placeholder (Req 6.2)
+    assert "{relevant_content}" in CHAPTER_PROMPT_TEMPLATE
+
+
+def test_chapter_prompt_template_contains_required_placeholders() -> None:
+    """CHAPTER_PROMPT_TEMPLATE contains all required placeholders."""
+    # Verify all required placeholders (Req 6.2, 6.3, 6.4)
+    assert "{chapter_ref}" in CHAPTER_PROMPT_TEMPLATE
+    assert "{topic_title}" in CHAPTER_PROMPT_TEMPLATE
+    assert "{chapter_summary}" in CHAPTER_PROMPT_TEMPLATE
+    assert "{timestamps}" in CHAPTER_PROMPT_TEMPLATE
+    assert "{previously_covered}" in CHAPTER_PROMPT_TEMPLATE
+    assert "{word_count}" in CHAPTER_PROMPT_TEMPLATE
 
 
 def test_prompts_module_has_no_internal_imports() -> None:
@@ -70,7 +92,7 @@ def test_prompts_module_has_no_internal_imports() -> None:
     import importlib
     import inspect
 
-    source = inspect.getsource(importlib.import_module("prompts"))
+    source = inspect.getsource(importlib.import_module("src.prompts"))
     # Should not import from any sibling module
     assert "from models" not in source
     assert "from agent" not in source

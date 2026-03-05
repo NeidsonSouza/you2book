@@ -6,8 +6,8 @@ Verifies that format_video_as_text produces the expected markdown-style
 text output for a sample VideoContent instance.
 """
 
-from formatters import format_video_as_text
-from models import Topic, VideoContent, VideoPart
+from src.formatters import format_video_as_text
+from src.models import Topic, VideoContent, VideoPart
 
 
 def test_format_video_as_text_produces_expected_output() -> None:
@@ -20,7 +20,12 @@ def test_format_video_as_text_produces_expected_output() -> None:
                 part_number=1,
                 title="Introduction",
                 topics=[
-                    Topic(timestamp="0:00", title="Welcome", description="Opening remarks"),
+                    Topic(
+                        timestamp="0:00",
+                        title="Welcome",
+                        description="Opening remarks",
+                        key_points=["First point about welcome", "Second point about introduction"],
+                    ),
                     Topic(timestamp="1:30", title="Overview", description="High-level summary"),
                 ],
             ),
@@ -28,7 +33,12 @@ def test_format_video_as_text_produces_expected_output() -> None:
                 part_number=2,
                 title="Deep Dive",
                 topics=[
-                    Topic(timestamp="5:00", title="Architecture", description="System design details"),
+                    Topic(
+                        timestamp="5:00",
+                        title="Architecture",
+                        description="System design details",
+                        key_points=["Microservices pattern", "Event-driven architecture", "API gateway design"],
+                    ),
                     Topic(timestamp="10:15", title="Performance", description="Optimization techniques"),
                 ],
             ),
@@ -43,10 +53,17 @@ def test_format_video_as_text_produces_expected_output() -> None:
         "",
         "## Part 1: Introduction",
         "- [0:00] Welcome: Opening remarks",
+        "  Key points:",
+        "  • First point about welcome",
+        "  • Second point about introduction",
         "- [1:30] Overview: High-level summary",
         "",
         "## Part 2: Deep Dive",
         "- [5:00] Architecture: System design details",
+        "  Key points:",
+        "  • Microservices pattern",
+        "  • Event-driven architecture",
+        "  • API gateway design",
         "- [10:15] Performance: Optimization techniques",
         "",
     ])

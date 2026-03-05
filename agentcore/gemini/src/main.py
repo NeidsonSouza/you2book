@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any
 
-from pipeline import run_pipeline
+from .pipeline import run_pipeline
 
 # Configure structured logging
 logging.basicConfig(

@@ -4,7 +4,7 @@ Contains functions for printing and serializing video content
 and book table of contents. No agent invocations or pipeline logic.
 """
 
-from models import BookTableOfContents, VideoContent
+from .models import BookTableOfContents, VideoContent
 
 
 def print_video_content(video: VideoContent) -> None:
@@ -15,6 +15,10 @@ def print_video_content(video: VideoContent) -> None:
         print(f"Part {part.part_number}: {part.title}")
         for topic in part.topics:
             print(f"  [{topic.timestamp}] {topic.title}: {topic.description}")
+            if topic.key_points:
+                print("    Key points:")
+                for point in topic.key_points:
+                    print(f"    • {point}")
         print()
 
 
@@ -25,6 +29,10 @@ def format_video_as_text(video: VideoContent) -> str:
         lines.append(f"## Part {part.part_number}: {part.title}")
         for topic in part.topics:
             lines.append(f"- [{topic.timestamp}] {topic.title}: {topic.description}")
+            if topic.key_points:
+                lines.append("  Key points:")
+                for point in topic.key_points:
+                    lines.append(f"  • {point}")
         lines.append("")
     return "\n".join(lines)
 

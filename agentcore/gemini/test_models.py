@@ -14,7 +14,7 @@ import hypothesis.strategies as st
 from hypothesis import given, settings
 from pydantic import BaseModel
 
-from models import (
+from src.models import (
     BookChapter,
     BookOutput,
     BookTableOfContents,
@@ -32,6 +32,7 @@ ORIGINAL_MODELS: dict[str, dict[str, tuple[type, str]]] = {
         "timestamp": (str, "Timestamp in 'MM:SS' format indicating when the topic starts"),
         "title": (str, "Concise title of the topic"),
         "description": (str, "Detailed description of the topic content, without filler words or greetings"),
+        "key_points": (list[str], "Discrete claims, examples, data points, or quotes extracted from the video"),
     },
     "VideoPart": {
         "part_number": (int, "Sequential number of this part"),

@@ -9,6 +9,10 @@ class Topic(BaseModel):
     description: str = Field(
         description="Detailed description of the topic content, without filler words or greetings"
     )
+    key_points: list[str] = Field(
+        default_factory=list,
+        description="Discrete claims, examples, data points, or quotes extracted from the video"
+    )
 
 
 class VideoPart(BaseModel):
