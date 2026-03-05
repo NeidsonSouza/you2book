@@ -4,33 +4,31 @@ import uuid
 import os
 import logging
 
-from routing import resolve_agent
-
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-AGENT_RUNTIME_MAP = json.loads(os.environ.get('AGENT_RUNTIME_MAP', '{}'))
+AGENT_RUNTIME_ARN = os.environ.get('AGENT_RUNTIME_ARN', '')
 
-logger.info(f"Initialized agent runtime map | agents={list(AGENT_RUNTIME_MAP.keys())}")
+logger.info(f"Initialized with runtime ARN | arn={AGENT_RUNTIME_ARN}")
 
 
 def handler(event, context):
     body = event if isinstance(event, dict) else json.loads(event)
 
-    agent_name = body.get('agentName')
     prompt = body.get('prompt', '')
     session_id = body.get('sessionId') or str(uuid.uuid4()) + '-agentinvoker'
 
     # Log only metadata, not full event payload
-    logger.info(f"Request received | functionArn={context.invoked_function_arn} | requestId={context.aws_request_id} | sessionId={session_id} | agentName={agent_name} | promptLength={len(prompt)}")
+    logger.info(f"Request received | functionArn={context.invoked_function_arn} | requestId={context.aws_request_id} | sessionId={session_id} | promptLength={len(prompt)}")
 
-    # Resolve agent name to runtime ARN
-    result = resolve_agent(agent_name, AGENT_RUNTIME_MAP)
-    if isinstance(result, dict):
-        logger.error(f"Agent routing failed | agentName={agent_name} | sessionId={session_id}")
-        return result
+    if not AGENT_RUNTIME_ARN:
+        logger.error(f"Missing AGENT_RUNTIME_ARN environment variable | sessionId={session_id}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': 'Agent runtime not configured'})
+        }
 
-    arn = result
+    arn = AGENT_RUNTIME_ARN
     region = arn.split(':')[3] if arn.count(':') >= 3 else 'us-east-1'
 
     if not prompt:

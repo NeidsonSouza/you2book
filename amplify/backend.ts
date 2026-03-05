@@ -8,15 +8,13 @@ import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
 import { storage } from './storage/resource';
-import { fetchChannelVideos } from './functions/fetch-channel-videos/resource';
 import { agentInvoker } from './functions/agent-invoker/resource';
-import { saveTranscript } from './functions/save-transcript/resource';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { discoverAgents, computeContentHash, shouldBuild } from '../src/lib/agentDiscovery';
-import { generateRuntimeName, buildRegistryMap } from '../src/lib/agentRegistry';
+import { generateRuntimeName } from '../src/lib/agentRegistry';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,9 +22,7 @@ const __dirname = path.dirname(__filename);
 const backend = defineBackend({
   auth,
   data,
-  fetchChannelVideos,
   agentInvoker,
-  saveTranscript,
   storage
 });
 
@@ -73,7 +69,7 @@ const bucket = new s3.Bucket(customResourceStack, 'AgentcoreBucket', {
 });
 
 const agentInvokerLambda = backend.agentInvoker.resources.lambda as Function;
-const runtimeEntries: Array<{ name: string; arn: string }> = [];
+let agentRuntimeArn: string | undefined;
 
 for (const agent of agents) {
   const sourceFiles = fs.readdirSync(agent.srcDir)
@@ -169,33 +165,22 @@ for (const agent of agents) {
     }));
   }
 
-  runtimeEntries.push({ name: agent.name, arn: runtime.agentRuntimeArn });
+  // Store the runtime ARN (only one agent expected)
+  agentRuntimeArn = runtime.agentRuntimeArn;
 }
 
-// Build the registry map and set it as an environment variable on the invoker Lambda
-const runtimeMap = buildRegistryMap(runtimeEntries);
-agentInvokerLambda.addEnvironment('AGENT_RUNTIME_MAP', JSON.stringify(runtimeMap));
+// Set the single runtime ARN as an environment variable on the invoker Lambda
+if (agentRuntimeArn) {
+  agentInvokerLambda.addEnvironment('AGENT_RUNTIME_ARN', agentRuntimeArn);
+} else {
+  throw new Error('No agent runtime was created');
+}
 
 // Grant the fetch-channel-videos Lambda write access to the storage bucket for transcripts
 const storageBucket = backend.storage.resources.bucket;
-const fetchLambda = backend.fetchChannelVideos.resources.lambda as Function;
-storageBucket.grantWrite(fetchLambda, 'transcripts/*');
 
-// Pass the bucket name as an environment variable to the Lambda
-fetchLambda.addEnvironment('TRANSCRIPT_BUCKET_NAME', storageBucket.bucketName);
-
-// Grant the save-transcript Lambda write access to the storage bucket for transcripts
-const saveTranscriptLambda = backend.saveTranscript.resources.lambda as Function;
-storageBucket.grantWrite(saveTranscriptLambda, 'transcripts/*');
-
-// Grant the fetch-channel-videos Lambda permission to invoke the save-transcript Lambda
-saveTranscriptLambda.grantInvoke(fetchLambda);
-
-// Pass the save-transcript Lambda function name to the fetch-channel-videos Lambda
-fetchLambda.addEnvironment('SAVE_TRANSCRIPT_FUNCTION_NAME', saveTranscriptLambda.functionName);
-
-// Export the Runtime map as a CfnOutput
-new cdk.CfnOutput(customResourceStack, 'AgentcoreRuntimeMap', {
-  value: JSON.stringify(runtimeMap),
-  description: 'JSON map of agent names to AgentCore Runtime ARNs',
+// Export the Runtime ARN as a CfnOutput
+new cdk.CfnOutput(customResourceStack, 'AgentcoreRuntimeArn', {
+  value: agentRuntimeArn,
+  description: 'AgentCore Runtime ARN',
 });
