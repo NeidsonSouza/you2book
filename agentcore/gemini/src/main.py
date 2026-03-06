@@ -51,9 +51,15 @@ async def invoke_agent(request: InvocationRequest):
             detail="OUTPUT_BUCKET_NAME environment variable is not set",
         )
 
-    # Extract optional video URL from request
+    # Extract required video URL from request
     video_url = request.input.get("video_url")
-    logger.info(f"Starting pipeline | video_url={video_url or 'default'}")
+    if not video_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required field: video_url",
+        )
+    
+    logger.info(f"Starting pipeline | video_url={video_url}")
 
     # Run the book generation pipeline
     try:

@@ -44,12 +44,12 @@ def _build_scoped_context(video: VideoContent, source_timestamps: list[str]) -> 
     return "\n".join(lines)
 
 
-def run_pipeline(video_url: str | None = None) -> BookOutput:
+def run_pipeline(video_url: str) -> BookOutput:
     """Three-step pipeline: extract topics → build TOC → generate chapters."""
     # Step 1: structured extraction of video content (requires Pro model for video understanding)
     print(">>> Step 1: Extracting topics from the video...\n")
     extract_agent = build_agent("gemini-2.5-pro")
-    extract_prompt = build_extract_prompt(video_url) if video_url else build_extract_prompt()
+    extract_prompt = build_extract_prompt(video_url)
     response = extract_agent(extract_prompt, structured_output_model=VideoContent)
     video: VideoContent = response.structured_output
     print_video_content(video)

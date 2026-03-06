@@ -15,11 +15,11 @@ logger.info(f"Initialized with runtime ARN | arn={AGENT_RUNTIME_ARN}")
 def handler(event, context):
     body = event if isinstance(event, dict) else json.loads(event)
 
-    prompt = body.get('prompt', '')
+    video_url = body.get('videoUrl', '')
     session_id = body.get('sessionId') or str(uuid.uuid4()) + '-agentinvoker'
 
     # Log only metadata, not full event payload
-    logger.info(f"Request received | functionArn={context.invoked_function_arn} | requestId={context.aws_request_id} | sessionId={session_id} | promptLength={len(prompt)}")
+    logger.info(f"Request received | functionArn={context.invoked_function_arn} | requestId={context.aws_request_id} | sessionId={session_id} | videoUrl={video_url}")
 
     if not AGENT_RUNTIME_ARN:
         logger.error(f"Missing AGENT_RUNTIME_ARN environment variable | sessionId={session_id}")
@@ -31,16 +31,16 @@ def handler(event, context):
     arn = AGENT_RUNTIME_ARN
     region = arn.split(':')[3] if arn.count(':') >= 3 else 'us-east-1'
 
-    if not prompt:
-        logger.error(f"Missing required field: prompt | sessionId={session_id}")
+    if not video_url:
+        logger.error(f"Missing required field: videoUrl | sessionId={session_id}")
         return {
             'statusCode': 400,
-            'body': json.dumps({'error': 'Missing required field: prompt'})
+            'body': json.dumps({'error': 'Missing required field: videoUrl'})
         }
 
-    payload = json.dumps({'input': {'prompt': prompt}}).encode()
+    payload = json.dumps({'input': {'video_url': video_url}}).encode()
 
-    logger.info(f"Invoking AgentCore | runtimeArn={arn} | region={region} | sessionId={session_id} | promptLength={len(prompt)}")
+    logger.info(f"Invoking AgentCore | runtimeArn={arn} | region={region} | sessionId={session_id} | videoUrl={video_url}")
 
     try:
         agent_core_client = boto3.client('bedrock-agentcore', region_name=region)
